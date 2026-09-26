@@ -237,6 +237,28 @@ def live_counts(site, kind, d):
         return None
 
 
+LIVE_LOG = DATA / "live.csv"
+LIVE_FOLLOWUPS = [30, 60, 120, 300]    # 検知後、何秒後に最新の残り人数を再確認するか
+_PENDING = []                          # (実行時刻, 検知ID, site, kind, date, 検知からの秒数)
+
+
+def log_live(det_id, site, kind, d, offset, counts, ct_age=None):
+    total = sum(v for v in (counts or {}).values()) if counts is not None else ""
+    append(LIVE_LOG, ["detect_id", "time", "site", "kind", "date", "offset_sec", "am", "pm", "total", "cache_age"],
+           [[det_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), site, kind, d, offset,
+             (counts or {}).get("午前", ""), (counts or {}).get("午後", ""), total, ct_age if ct_age is not None else ""]])
+
+
+def run_pending():
+    now = time.time()
+    due = [p for p in _PENDING if p[0] <= now]
+    for p in due:
+        _PENDING.remove(p)
+        _, det_id, site, kind, d, off = p
+        log_live(det_id, site, kind, d, off, live_counts(site, kind, d))
+    return min((p[0] for p in _PENDING), default=None)
+
+
 def append(path, header, rows):
     new = not path.exists()
     with path.open("a", newline="", encoding="utf-8") as f:
@@ -381,6 +403,11 @@ def notify_cancels(cancels, base):
     lines = []
     for site, kind, d, counts, what in cancels[:8]:
         live = live_counts(site, kind, d)
+        det_id = f"{datetime.now():%m%d%H%M%S}_{site}_{d}"
+        log_live(det_id, site, kind, d, 0, live)
+        t0 = time.time()
+        for off in LIVE_FOLLOWUPS:
+            _PENDING.append((t0 + off, det_id, site, kind, d, off))
         if live is not None:
             counts = live
             what += "（最新確認済）" if sum(live.values()) > 0 else "（※最新では既に0名）"
@@ -522,6 +549,24 @@ def summary(hours=None):
         if lives:
             ls = sorted(lives)
             L.append(f"　続いた時間：中央値 約{ls[len(ls) // 2]:.0f}分（最短 約{ls[0]:.0f}分・最長 約{ls[-1]:.0f}分、{len(ls)}件）")
+
+    # --- 検知した枠は実際に取れたか ---
+    live = _rows(LIVE_LOG)
+    if since:
+        live = [r for r in live if datetime.fromisoformat(r["time"]) >= since]
+    dets = defaultdict(dict)
+    for r in live:
+        if r["total"] != "":
+            dets[r["detect_id"]][int(r["offset_sec"])] = int(r["total"])
+    if dets:
+        at0 = [v.get(0) for v in dets.values() if 0 in v]
+        ok0 = sum(1 for x in at0 if x > 0)
+        L.append("")
+        L.append(f"🎯 **検知した枠が取れる状態だった割合：{ok0}/{len(at0)}件**（検知直後に最新で残り1名以上）")
+        for off in LIVE_FOLLOWUPS:
+            xs = [v[off] for v in dets.values() if v.get(0, 0) > 0 and off in v]
+            if xs:
+                L.append(f"　{off}秒後もまだ空いていた：{sum(1 for x in xs if x > 0)}/{len(xs)}件")
 
     # --- 統計 ---
     ups = [e for e in events if e["event"] == "count_up"]
@@ -691,6 +736,7 @@ def loop(hours=5.6):
                         _DUE[(site, kind)] = {m for c_t, s_, k_, m in cands if (s_, k_) == (site, kind) and c_t <= next_fast + 2}
                 else:
                     next_fast = t_now + interval
+        next_pending = run_pending()
         if now >= next_commit:
             commit_push()
             next_commit = now + COMMIT_MIN * 60
@@ -698,7 +744,8 @@ def loop(hours=5.6):
                 left = (end - time.time()) / 3600
                 print("watch.py が更新されたので再起動")
                 os.execv(sys.executable, [sys.executable, __file__, "loop", f"{left:.4f}"] + (["dispatched"] if dispatched else []))
-        wake = min(next_fast, next_slow, next_commit, end - 30, (end - 120) if not dispatched else end)
+        wake = min(next_fast, next_slow, next_commit, end - 30, (end - 120) if not dispatched else end,
+                   next_pending or float("inf"))
         time.sleep(max(1.0, wake - time.time()))
     commit_push()
     print(f"loop終了: {n}回")
