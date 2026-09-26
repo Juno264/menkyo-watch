@@ -1,1 +1,0 @@
-{ "name": "menkyo-proxy", "private": true, "type": "module", "engines": { "node": ">=18" } }

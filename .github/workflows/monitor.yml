@@ -21,7 +21,7 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 14
     env:
       TZ: Asia/Tokyo
       NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
@@ -30,6 +30,8 @@ jobs:
       JITTER_MAX_SEC: "0"
     steps:
       - uses: actions/checkout@v4
+      - name: Get latest data
+        run: git pull -q --ff-only origin main || true
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
