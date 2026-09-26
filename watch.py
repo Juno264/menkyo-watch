@@ -35,14 +35,24 @@ BOOK_URL = "https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/in
 SUMMARY_HOURS = {8, 20}                              # この時刻台の最初の実行でまとめを送る
 FAST = [("koto", "only")]                              # 優先：短い間隔でスキャン
 SLOW = [("fuchu", "only"), ("samezu", "only")]         # 通常：FAST_MIN×SLOW_EVERY 分ごと
-FAST_MIN = 3
-SLOW_EVERY = 5                                         # 3分×5＝15分
-COMMIT_EVERY = 5                                       # 保存（git push）は15分ごと
+FAST_MIN = 1
+SLOW_EVERY = 15                                        # 1分×15＝15分
+COMMIT_EVERY = 15                                      # 保存（git push）は15分ごと
 MAX_CLICKS = 10                                        # 残り0の日が続いても、1回に確認する日数の上限
 DETAIL_DAYS = 3                                      # 早い順に何日分、残り人数を読むか
 MONTHS = 4
 
 SITES = {"fuchu": "府中試験場", "samezu": "鮫洲試験場", "koto": "江東試験場"}
+PLACE = {"fuchu": "270", "samezu": "280", "koto": "250"}
+COURSE = {"only": "11", "both": "61"}                  # 教習所卒業等：従来の免許証=11、マイナ/両方=61
+API = "https://license-test-tokyo-prd-police-pref-api.tokyo-madoguchi-yoyaku.com"
+API_HEADERS = {"user-agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                              "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"),
+               "accept": "application/json, text/javascript, */*; q=0.01",
+               "content-type": "application/json; charset=UTF-8",
+               "origin": "https://license-test.tokyo-madoguchi-yoyaku.com",
+               "referer": "https://license-test.tokyo-madoguchi-yoyaku.com/"}
+NOTIFY_FIRST_N = 5                                     # 残り人数の増加は、早い順この日数までを通知（それより先は記録のみ）
 KINDS = {"both": "免許証及びマイナ免許証の両方", "only": "免許証のみ"}
 JP = {"fuchu": "府中", "samezu": "鮫洲", "koto": "江東", "both": "両方", "only": "免許証のみ"}
 W = "月火水木金土日"
@@ -161,6 +171,53 @@ def scan_one(browser, site, kind):
         page.context.close()
 
 
+def _api(method, path, params=None, body=None):
+    url = f"{API}/{path}" + ("?" + "&".join(f"{k}={v}" for k, v in params.items()) if params else "")
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method, headers=API_HEADERS)
+    d = json.loads(urllib.request.urlopen(req, timeout=30).read())
+    if d.get("code") != "A0001":
+        raise RuntimeError(f"API code {d.get('code')}")
+    return d
+
+
+def _slotname(row):
+    return "午前" if row.get("starttime", "") < "1000" else "午後"
+
+
+def api_scan(site, kind):
+    """予約画面のカレンダーと同じデータ（calgetres）を月ごとに取得。1か月1回の問い合わせで全日・全時間帯の残りがわかる"""
+    today = date.today()
+    months, y, m = [], today.year, today.month
+    for _ in range(MONTHS):
+        months.append(f"{y:04d}{m:02d}")
+        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    counts, ages = {}, []
+    for ym in months:
+        d = _api("GET", "calgetres", {"date": ym, "coursecode": COURSE[kind], "placecode": PLACE[site], "user": "pub"})
+        ages.append(round(time.time() - float(d.get("currenttime", time.time()))))
+        for row in d.get("body", []):
+            ds = f"{row['date'][:4]}-{row['date'][4:6]}-{row['date'][6:]}"
+            if ds <= today.isoformat():
+                continue
+            left = max(0, int(row["capacity"]) - int(row["reservation"]))
+            counts.setdefault(ds, {})[_slotname(row)] = left
+    dates = sorted(d for d, c in counts.items() if sum(c.values()) > 0)
+    return {"dates": dates, "counts": {d: counts[d] for d in dates}, "cache_age": max(ages) if ages else None}
+
+
+def live_counts(site, kind, d):
+    """最新の残り人数（getres）。空きを見つけたときだけ1回呼ぶ"""
+    try:
+        r = _api("POST", "getres", body={"date": d.replace("-", ""), "coursecode": COURSE[kind], "placecode": PLACE[site]})
+        out = {}
+        for row in r.get("body", []):
+            out[_slotname(row)] = max(0, int(row["capacity"]) - int(row["reservation"]))
+        return out
+    except Exception:
+        return None
+
+
 def append(path, header, rows):
     new = not path.exists()
     with path.open("a", newline="", encoding="utf-8") as f:
@@ -241,6 +298,8 @@ def diff(prev, cur, now):
         for slot, n in c.items():
             if slot == "error" or slot not in pc or pc[slot] == n:
                 continue
+            if n < pc[slot] and d not in cur.get("dates", [])[:NOTIFY_FIRST_N]:
+                continue   # 先の日付の通常の予約（人数減少）は記録しない
             ev.append([now, "count_up" if n > pc[slot] else "count_down", d, slot, pc[slot], n, ""])
     return ev
 
@@ -252,18 +311,17 @@ def run(targets=None):
     cur_all, scan_rows, ev_rows, alerts = {}, [], [], []
     cancels = []   # キャンセル検知 (site, kind, date, counts, 内容)
     base = baseline()
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
+    if True:
         for site, kind in targets:
             if True:
                 key = f"{site}_{kind}"
                 t0 = time.time()
                 try:
-                    cur = scan_one(browser, site, kind)
+                    cur = api_scan(site, kind)
                     first = cur["dates"][0] if cur["dates"] else ""
                     fc = cur["counts"].get(first, {})
                     scan_rows.append([now, site, kind, "ok", first, len(cur["dates"]),
-                                      fc.get("午前", ""), fc.get("午後", ""), round(time.time() - t0, 1)])
+                                      fc.get("午前", ""), fc.get("午後", ""), cur.get("cache_age", "")])
                     prev = prev_all.get(key)
                     if prev and "dates" in prev:
                         last_prev = max(prev["dates"]) if prev["dates"] else ""
@@ -271,7 +329,8 @@ def run(targets=None):
                             ev_rows.append([e[0], site, kind] + e[1:])
                             _, typ, d, slot, old, new, _ = e
                             # キャンセル＝残り人数の増加、または満席だった日に空き（90日先の新規公開日は除く）
-                            if typ == "count_up":
+                            front = cur["dates"][:NOTIFY_FIRST_N]
+                            if typ == "count_up" and (int(old) == 0 or d in front):
                                 cancels.append((site, kind, d, cur["counts"].get(d), f"{slot} {old}→{new}名"))
                             elif typ == "date_open" and last_prev and d < last_prev:
                                 cancels.append((site, kind, d, cur["counts"].get(d), "満席だった日に空き"))
@@ -280,12 +339,11 @@ def run(targets=None):
                     scan_rows.append([now, site, kind, "error", "", "", "", "", round(time.time() - t0, 1)])
                     cur_all[key] = dict(prev_all.get(key, {}), error=f"{e.__class__.__name__}: {str(e)[:120]}")
                     print(key, "error", e)
-                time.sleep(2)
-        browser.close()
+                time.sleep(1)
 
     merged = dict(prev_all); merged.update(cur_all)
     LATEST.write_text(json.dumps(merged, ensure_ascii=False, indent=1), encoding="utf-8")
-    append(SCANS, ["time", "site", "kind", "result", "earliest", "n_dates", "am_left", "pm_left", "sec"], scan_rows)
+    append(SCANS, ["time", "site", "kind", "result", "earliest", "n_dates", "am_left", "pm_left", "sec_or_cache_age"], scan_rows)
     if ev_rows:
         append(EVENTS, ["time", "site", "kind", "event", "date", "slot", "old", "new", "note"], ev_rows)
     print(f"{now} scan done: {sum(r[3] == 'ok' for r in scan_rows)}/{len(scan_rows)} ok, {len(ev_rows)} events")
@@ -301,7 +359,11 @@ def run(targets=None):
 def notify_cancels(cancels, base):
     cancels.sort(key=lambda c: (c[0] != FAV, c[2]))          # 江東を先頭、次に早い日
     lines = []
-    for site, kind, d, counts, what in cancels:
+    for site, kind, d, counts, what in cancels[:8]:
+        live = live_counts(site, kind, d)
+        if live is not None:
+            counts = live
+            what += "（最新確認済）" if sum(live.values()) > 0 else "（※最新では既に0名）"
         b = base.get(f"{site}_{kind}")
         early = " 🔥**記録開始時より早い**" if b and d < b else ""
         tag = "⭐ **【江東】**" if site == FAV else f"**{JP[site]}**"
