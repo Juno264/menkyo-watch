@@ -1,0 +1,65 @@
+[
+ {
+  "tag": "A",
+  "type": "",
+  "name": "",
+  "text": "閉じる",
+  "href": ""
+ },
+ {
+  "tag": "A",
+  "type": "",
+  "name": "closebtn",
+  "text": "「利用規約について」を閉じる",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "Select a language / 言語を選択してください",
+  "href": ""
+ },
+ {
+  "tag": "SELECT",
+  "type": "select-one",
+  "name": "selectLangauge",
+  "text": "日本語 English 中国语 Tiếng Việt नेपाली မြန်မာဘာသာ",
+  "href": ""
+ },
+ {
+  "tag": "A",
+  "type": "",
+  "name": "",
+  "text": "警視庁ホームページ",
+  "href": "https://www.keishicho.metro.tokyo.lg.jp/menkyo/menkyo/web.html"
+ },
+ {
+  "tag": "A",
+  "type": "",
+  "name": "TermsOfService",
+  "text": "「利用規約について」",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "TermsOfServiceCheckLabel",
+  "text": "「利用規約について」を読み、同意しました。",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "checkbox",
+  "name": "TermsOfServiceCheck",
+  "text": "1",
+  "href": ""
+ },
+ {
+  "tag": "A",
+  "type": "",
+  "name": "confirmbtn1",
+  "text": "手続を開始する",
+  "href": ""
+ }
+]
