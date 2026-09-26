@@ -12,6 +12,7 @@
   data/latest.json … 直近の状態
 """
 import csv
+import subprocess
 import json
 import os
 import re
@@ -302,10 +303,45 @@ def summary(hours=None):
     return "\n".join(L)
 
 
+def commit_push():
+    cmds = [["git", "add", "-A", "--", "data"],
+            ["git", "commit", "-q", "-m", f"data {datetime.now():%m/%d %H:%M}"]]
+    for c in cmds:
+        if subprocess.run(c).returncode != 0:
+            return
+    for _ in range(3):
+        if subprocess.run(["git", "pull", "-q", "--rebase", "-X", "theirs", "origin", "main"]).returncode == 0 and \
+           subprocess.run(["git", "push", "-q", "origin", "HEAD:main"]).returncode == 0:
+            return
+        time.sleep(5)
+
+
+def loop(hours=5.6, interval_min=15):
+    """interval_minごとにスキャン→保存をくり返す（GitHubの1ジョブ上限6時間の内側で止める）"""
+    end = time.time() + hours * 3600
+    n = 0
+    while time.time() < end - 60:
+        t0 = time.time()
+        try:
+            run()
+        except Exception as e:
+            print("run失敗:", e)
+            _notify_error_once(f"スキャン処理でエラー: {e.__class__.__name__}")
+        commit_push()
+        n += 1
+        wait = interval_min * 60 - (time.time() - t0)
+        if time.time() + wait >= end:
+            break
+        time.sleep(max(30, wait))
+    print(f"loop終了: {n}回")
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     if cmd == "run":
         run()
+    elif cmd == "loop":
+        loop()
     elif cmd == "report":
         discord(summary())
     elif cmd == "test":

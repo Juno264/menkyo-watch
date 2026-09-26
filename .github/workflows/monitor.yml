@@ -1,8 +1,6 @@
 name: menkyo-monitor
 
 on:
-  schedule:
-    - cron: "*/15 * * * *"        # 15分ごと（GitHub側の都合で数分〜十数分遅れることがある）
   push:
     paths: ["run/cmd.txt"]       # このファイルを書き換えてpushすると、その内容のコマンドを実行
   workflow_dispatch:
