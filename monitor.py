@@ -461,6 +461,7 @@ if __name__ == "__main__":
     elif cmd == "explore" and len(sys.argv) > 2:
         explore(sys.argv[2])
     elif cmd == "relaytest":
+        MAINT = 'id="maintenance"'
         out = DEBUG / "relaytest.txt"; lines = [f"PROXY_URL={PROXY_URL} token_set={bool(PROXY_TOKEN)}"]
         try:
             r = urllib.request.Request(PROXY_URL, headers={"x-proxy-token": PROXY_TOKEN})
@@ -472,7 +473,7 @@ if __name__ == "__main__":
             r = urllib.request.Request(PROXY_URL, data=p, method="POST", headers={"content-type": "application/json", "x-proxy-token": PROXY_TOKEN})
             d = json.loads(urllib.request.urlopen(r, timeout=40).read())
             body = base64.b64decode(d["body_b64"]).decode("utf-8", "replace")
-            lines.append(f"license-test status={d['status']} maintenance={'id=\"maintenance\"' in body} len={len(body)}")
+            lines.append(f"license-test status={d['status']} maintenance={MAINT in body} len={len(body)}")
             lines.append(body[:1500])
         except Exception as e:
             lines.append(f"POST error: {e}")
