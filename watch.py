@@ -33,6 +33,11 @@ BOOKING_INFO = os.environ.get("BOOKING_INFO", "")   # 予約入力用の個人�
 MY_DATE = os.environ.get("MY_DATE", "")             # 今持っている予約の日付（例 2026-12-10）。これより早い空きだけ通知
 BOOK_URL = "https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index.html?lang=ja"
 SUMMARY_HOURS = {8, 22}                              # この時刻台の最初の実行でまとめを送る
+FAST = [("koto", "only")]                              # 優先：短い間隔でスキャン
+SLOW = [("fuchu", "only"), ("samezu", "only")]         # 通常：FAST_MIN×SLOW_EVERY 分ごと
+FAST_MIN = 3
+SLOW_EVERY = 5                                         # 3分×5＝15分
+COMMIT_EVERY = 5                                       # 保存（git push）は15分ごと
 DETAIL_DAYS = 3                                      # 早い順に何日分、残り人数を読むか
 MONTHS = 4
 
@@ -89,7 +94,7 @@ def read_dates(page):
         if cal["nextDisabled"]:
             break
         page.locator(".ui-datepicker-next").first.click()
-        time.sleep(0.7)
+        page.wait_for_function("t => (document.querySelector('.ui-datepicker-title')||{}).innerText !== t", arg=cal["title"], timeout=10000)
     return out
 
 
@@ -100,7 +105,7 @@ def goto_month(page, y, mo):
             return
         sel = ".ui-datepicker-next" if (cy, cm) < (y, mo) else ".ui-datepicker-prev"
         page.locator(sel).first.click()
-        time.sleep(0.6)
+        page.wait_for_timeout(300)
     raise RuntimeError(f"{y}/{mo} に移動できない")
 
 
@@ -112,21 +117,28 @@ def read_counts(page, d):
     goto_month(page, y, mo)
     page.locator("table.ui-datepicker-calendar td:not(.ui-datepicker-unselectable):not(.ui-datepicker-other-month) a",
                  has_text=re.compile(rf"^{dd}$")).first.click()
-    time.sleep(1.5)
-    settle(page)
+    try:
+        page.get_by_text(re.compile(r"残り\s*\d+\s*名")).first.wait_for(timeout=8000)
+        page.wait_for_timeout(500)
+    except Exception:
+        pass
     txt = page.inner_text("body")
     txt = txt[txt.find("受付時間を選択"):] if "受付時間を選択" in txt else txt
     return {am: int(n) for am, _, n in SLOT_RE.findall(txt)}
 
 
+def _click_text(page, t):
+    loc = page.get_by_text(t, exact=True)
+    loc.locator("visible=true").first.click(timeout=20000)
+
+
 def scan_one(browser, site, kind):
     page = new_page(browser, viewport={"width": 1280, "height": 900})
     try:
-        page.goto(START_URL, timeout=45000)
-        settle(page)
+        page.goto(START_URL, timeout=45000, wait_until="domcontentloaded")
         for s in steps_for(site, kind):
-            do_step(page, s)
-            settle(page)
+            _click_text(page, s["text"])
+            page.wait_for_load_state("domcontentloaded")
         dates = read_dates(page)
         counts = {}
         for d in dates[:DETAIL_DAYS]:
@@ -217,7 +229,8 @@ def diff(prev, cur, now):
     return ev
 
 
-def run():
+def run(targets=None):
+    targets = targets or FAST + SLOW
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     prev_all = json.loads(LATEST.read_text(encoding="utf-8")) if LATEST.exists() else {}
     cur_all, scan_rows, ev_rows, alerts = {}, [], [], []
@@ -225,8 +238,8 @@ def run():
     base = baseline()
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
-        for site in SITES:
-            for kind in KINDS:
+        for site, kind in targets:
+            if True:
                 key = f"{site}_{kind}"
                 t0 = time.time()
                 try:
@@ -265,15 +278,16 @@ def run():
                 time.sleep(2)
         browser.close()
 
-    LATEST.write_text(json.dumps(cur_all, ensure_ascii=False, indent=1), encoding="utf-8")
+    merged = dict(prev_all); merged.update(cur_all)
+    LATEST.write_text(json.dumps(merged, ensure_ascii=False, indent=1), encoding="utf-8")
     append(SCANS, ["time", "site", "kind", "result", "earliest", "n_dates", "am_left", "pm_left", "sec"], scan_rows)
     if ev_rows:
         append(EVENTS, ["time", "site", "kind", "event", "date", "slot", "old", "new", "note"], ev_rows)
-    print(f"{now} scan done: {sum(r[3] == 'ok' for r in scan_rows)}/6 ok, {len(ev_rows)} events")
+    print(f"{now} scan done: {sum(r[3] == 'ok' for r in scan_rows)}/{len(scan_rows)} ok, {len(ev_rows)} events")
 
     errors = [r for r in scan_rows if r[3] == "error"]
-    if len(errors) == 6:
-        _notify_error_once("6パターンすべて失敗しました。サイトの画面が変わった可能性があります。")
+    if errors and len(errors) == len(scan_rows):
+        _notify_error_once("スキャンがすべて失敗しました。サイトの画面が変わった可能性があります。")
     if MODE == "hunt":
         hunts.sort(key=lambda h: (h[0] != FAV, h[2]))   # 江東を優先、次に早い日
         for site, kind, d, counts in hunts[:3]:
@@ -341,8 +355,10 @@ def summary(hours=None):
     L = [f"📋 **本免 学科試験 空き状況**（{datetime.now():%m/%d %H:%M}）", ""]
 
     # --- 第一希望：江東 ---
-    L.append(f"⭐ **{JP[FAV]}試験場（第一希望）**")
-    for kind in ["only", "both"]:
+    active = {f"{a}_{b}" for a, b in FAST + SLOW}
+    events = [e for e in events if f"{e['site']}_{e['kind']}" in active]
+    L.append(f"⭐ **{JP[FAV]}試験場（第一希望）**　{FAST_MIN}分ごとに確認")
+    for kind in ["only"]:
         k = f"{FAV}_{kind}"; s = latest.get(k, {})
         if not s.get("dates"):
             L.append(f"> {JP[kind]}：{'空きなし' if 'dates' in s else '取得失敗'}")
@@ -360,10 +376,10 @@ def summary(hours=None):
     L.append("")
 
     # --- その他の試験場 ---
-    L.append("**その他の試験場**（最短日　午前/午後の残り）")
+    L.append(f"**その他の試験場**（{FAST_MIN * SLOW_EVERY}分ごと・最短日　午前/午後の残り）")
     for site in ORDER[1:]:
         cells = []
-        for kind in ["only", "both"]:
+        for kind in ["only"]:
             k = f"{site}_{kind}"; s = latest.get(k, {})
             if s.get("dates"):
                 f = s["dates"][0]; c = s.get("counts", {}).get(f, {})
@@ -427,7 +443,7 @@ def _code_changed():
     return h != _CODE_HASH
 
 
-def loop(hours=5.6, interval_min=15):
+def loop(hours=5.6, interval_min=FAST_MIN):
     _code_changed()
     """interval_minごとにスキャン→保存をくり返す（GitHubの1ジョブ上限6時間の内側で止める）"""
     end = time.time() + hours * 3600
@@ -435,12 +451,13 @@ def loop(hours=5.6, interval_min=15):
     while time.time() < end - 60:
         t0 = time.time()
         try:
-            run()
+            run(FAST + (SLOW if n % SLOW_EVERY == 0 else []))
         except Exception as e:
             print("run失敗:", e)
             _notify_error_once(f"スキャン処理でエラー: {e.__class__.__name__}")
-        commit_push()
         n += 1
+        if n % COMMIT_EVERY == 0:
+            commit_push()
         if _code_changed():
             left = (end - time.time()) / 3600
             print("watch.py が更新されたので再起動")
@@ -449,13 +466,14 @@ def loop(hours=5.6, interval_min=15):
         if time.time() + wait >= end:
             break
         time.sleep(max(30, wait))
+    commit_push()
     print(f"loop終了: {n}回")
 
 
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     if cmd == "run":
-        run()
+        t0 = time.time(); run(); print(f"所要 {time.time() - t0:.0f}秒")
     elif cmd == "loop":
         loop(float(sys.argv[2]) if len(sys.argv) > 2 else 5.6)
     elif cmd == "report":
