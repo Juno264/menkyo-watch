@@ -478,6 +478,18 @@ if __name__ == "__main__":
         except Exception as e:
             lines.append(f"POST error: {e}")
         out.write_text("\n".join(lines), encoding="utf-8"); print("\n".join(lines))
+    elif cmd == "relayget":
+        for i, url in enumerate(sys.argv[2:]):
+            p = json.dumps({"url": url, "method": "GET", "headers": {"user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1", "accept-language": "ja"}}).encode()
+            r = urllib.request.Request(PROXY_URL, data=p, method="POST", headers={"content-type": "application/json", "x-proxy-token": PROXY_TOKEN})
+            try:
+                d = json.loads(urllib.request.urlopen(r, timeout=40).read())
+                body = base64.b64decode(d["body_b64"]).decode("utf-8", "replace")
+                txt = f"URL {url}\nstatus {d['status']}\nheaders {json.dumps(d['headers'], ensure_ascii=False)}\nset-cookie {d.get('set_cookie')}\n\n{body}"
+            except Exception as e:
+                txt = f"URL {url}\nERROR {e}"
+            (DEBUG / f"relayget_{i}.txt").write_text(txt, encoding="utf-8")
+            print(txt[:300])
     elif cmd == "analyze":
         analyze()
     elif cmd == "test-notify":

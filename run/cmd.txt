@@ -1,2 +1,2 @@
-relaytest
-# 1790417770889458514
+relayget https://license-renew.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/01/js/MKAYMA00index000.js https://license-renew.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/01/js/MKAYMA001common.js
+# 1790417837499128978
