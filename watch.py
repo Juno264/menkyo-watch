@@ -570,7 +570,7 @@ if __name__ == "__main__":
                   for (const s of document.querySelectorAll('script[src]')) {
                     const t = await (await fetch(s.src)).text();
                     const hits = []; let i = -1;
-                    for (const kw of ['getReservationTimeListUrl', 'getReservationTimeUrl', 'user=']) {
+                    for (const kw of ['userInfo']) {
                       let i = -1; while ((i = t.indexOf(kw, i + 1)) >= 0 && hits.length < 20) hits.push('[' + kw + '] ' + t.slice(Math.max(0, i - 250), i + 350)); }
                     r[s.src] = hits; }
                   return r; }""")
