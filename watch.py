@@ -556,6 +556,25 @@ if __name__ == "__main__":
             page.wait_for_timeout(1500)
             cookies = page.context.cookies()
         (DATA / "netlog.json").write_text(json.dumps({"log": log, "cookies": [{k: c[k] for k in ("name", "domain", "path")} for c in cookies]}, ensure_ascii=False, indent=1), encoding="utf-8")
+    elif cmd == "grepjs":
+        out = {}
+        with sync_playwright() as pw:
+            b = pw.chromium.launch(headless=True); page = new_page(b)
+            page.goto(START_URL, wait_until="domcontentloaded")
+            for t in ["学科試験の予約はこちら", "「利用規約について」を読み、同意しました。", "手続を開始する"]:
+                _click_text(page, t); page.wait_for_load_state("domcontentloaded")
+            page.wait_for_timeout(1500)
+            for label, url in [("booking", page.url), ("calendar", page.url.replace("/01/html/", "/calendar/01/html/"))]:
+                page.goto(url, wait_until="domcontentloaded"); page.wait_for_timeout(1500)
+                out[label] = page.evaluate("""async () => { const r = {};
+                  for (const s of document.querySelectorAll('script[src]')) {
+                    const t = await (await fetch(s.src)).text();
+                    const hits = []; let i = -1;
+                    while ((i = t.indexOf('calgetres', i + 1)) >= 0 && hits.length < 6) hits.push(t.slice(Math.max(0, i - 400), i + 300));
+                    let j = -1; while ((j = t.indexOf('getres', j + 1)) >= 0 && hits.length < 12) { if (t.slice(j - 3, j) !== 'cal') hits.push('[getres] ' + t.slice(Math.max(0, j - 300), j + 200)); }
+                    r[s.src] = hits; }
+                  return r; }""")
+        (DATA / "grepjs.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     elif cmd == "testhunt":
         discord("🧪 **本番通知のテスト（実際の空きではありません）**")
         for m in [f"@here ⭐🔥 **【江東】** **キャンセル枠が出ました！** 江東・両方　**{fmt_d('2026-11-19')}**　残り 午前1 / 午後0"] + \
