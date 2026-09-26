@@ -527,6 +527,35 @@ if __name__ == "__main__":
             c = read_counts(page, d) if d in ds else "not selectable"
             (DATA / "debugdate.txt").write_text(f"{d} in dates={d in ds}\ncounts={c}\n\n" + page.inner_text("body"), encoding="utf-8")
             page.screenshot(path=str(DATA / "debugdate.png"), full_page=True)
+    elif cmd == "netlog":
+        site, kind = sys.argv[2], sys.argv[3]
+        log = []
+        with sync_playwright() as pw:
+            b = pw.chromium.launch(headless=True); page = new_page(b, viewport={"width": 1280, "height": 900})
+            def on_resp(r):
+                req = r.request
+                if req.resource_type in ("xhr", "fetch", "document"):
+                    try:
+                        body = r.text()[:3000]
+                    except Exception:
+                        body = "(binary)"
+                    log.append({"step": step[0], "type": req.resource_type, "method": req.method, "url": req.url,
+                                "post": (req.post_data or "")[:1000], "status": r.status,
+                                "req_headers": {k: v for k, v in req.headers.items() if k.lower() in ("content-type", "cookie", "x-requested-with", "referer")},
+                                "body": body})
+            step = ["goto"]
+            page.on("response", on_resp)
+            page.goto(START_URL, wait_until="domcontentloaded"); page.wait_for_timeout(1500)
+            for st in steps_for(site, kind):
+                step[0] = st["text"]; _click_text(page, st["text"]); page.wait_for_load_state("domcontentloaded"); page.wait_for_timeout(1500)
+            step[0] = "next-month"; page.locator(".ui-datepicker-next").first.click(); page.wait_for_timeout(2000)
+            ds = read_dates(page)
+            step[0] = "click-date"
+            if ds:
+                read_counts(page, ds[0])
+            page.wait_for_timeout(1500)
+            cookies = page.context.cookies()
+        (DATA / "netlog.json").write_text(json.dumps({"log": log, "cookies": [{k: c[k] for k in ("name", "domain", "path")} for c in cookies]}, ensure_ascii=False, indent=1), encoding="utf-8")
     elif cmd == "testhunt":
         discord("🧪 **本番通知のテスト（実際の空きではありません）**")
         for m in [f"@here ⭐🔥 **【江東】** **キャンセル枠が出ました！** 江東・両方　**{fmt_d('2026-11-19')}**　残り 午前1 / 午後0"] + \

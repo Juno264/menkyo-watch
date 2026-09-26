@@ -1,2 +1,2 @@
-watch run
-# 1790427392666128884
+watch netlog koto only
+# 1790427983394007711
