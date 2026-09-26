@@ -1,5 +1,5 @@
 __pycache__/
 .lock
-log.txt
+/log.txt
 debug/*_latest.png
 run.sh

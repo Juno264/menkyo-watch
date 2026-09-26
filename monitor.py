@@ -288,6 +288,16 @@ def explore(name):
                 log.append(f"step{i} ok {s} -> {page.url}")
         except Exception as e:
             log.append(f"ERROR {e.__class__.__name__}: {str(e)[:300]}")
+        time.sleep(6)
+        log.append(f"final url: {page.url}")
+        try:
+            msgs = page.evaluate("""async () => { const out = {};
+              for (const s of document.querySelectorAll('script[src]')) {
+                if (/Messages/.test(s.src)) { try { out[s.src] = await (await fetch(s.src)).text(); } catch (e) { out[s.src] = String(e); } } }
+              return out; }""")
+            (out / "messages.json").write_text(json.dumps(msgs, ensure_ascii=False, indent=1), encoding="utf-8")
+        except Exception as e:
+            log.append(f"msg fetch failed {e}")
         (out / "page.html").write_text(page.content(), encoding="utf-8")
         page.screenshot(path=str(out / "page.png"), full_page=True)
         items = page.evaluate("""() => [...document.querySelectorAll('a,button,input,select,label,[role=button],[onclick]')]
