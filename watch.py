@@ -478,6 +478,17 @@ if __name__ == "__main__":
         loop(float(sys.argv[2]) if len(sys.argv) > 2 else 5.6)
     elif cmd == "report":
         discord(summary())
+    elif cmd == "debugdate":
+        site, kind, d = sys.argv[2], sys.argv[3], sys.argv[4]
+        with sync_playwright() as pw:
+            b = pw.chromium.launch(headless=True); page = new_page(b, viewport={"width": 1280, "height": 900})
+            page.goto(START_URL, wait_until="domcontentloaded")
+            for st in steps_for(site, kind):
+                _click_text(page, st["text"]); page.wait_for_load_state("domcontentloaded")
+            ds = read_dates(page)
+            c = read_counts(page, d) if d in ds else "not selectable"
+            (DATA / "debugdate.txt").write_text(f"{d} in dates={d in ds}\ncounts={c}\n\n" + page.inner_text("body"), encoding="utf-8")
+            page.screenshot(path=str(DATA / "debugdate.png"), full_page=True)
     elif cmd == "testhunt":
         discord("🧪 **本番通知のテスト（実際の空きではありません）**")
         for m in [f"@here ⭐🔥 **【江東】** **キャンセル枠が出ました！** 江東・両方　**{fmt_d('2026-11-19')}**　残り 午前1 / 午後0"] + \
