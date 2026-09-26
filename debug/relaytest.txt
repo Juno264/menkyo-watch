@@ -1,3 +1,37 @@
-PROXY_URL=https://menkyo-watch-rosy.vercel.app/api/fetch token_set=False
-GET error: HTTP Error 401: Unauthorized b'{"error":"bad token"}'
-POST error: HTTP Error 401: Unauthorized
+PROXY_URL=https://menkyo-watch-rosy.vercel.app/api/fetch token_set=True
+GET: {"ok":true,"region":"hnd1","ip":"13.231.49.3","country":"JP"}
+license-test status=404 maintenance=True len=1598
+﻿<!DOCTYPE html>
+<html lang="ja" class="top">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <title id="MKAYMA00M000"></title>
+    
+    <link rel="stylesheet" href="/police-pref-tokyo/01/css/license.css" type="text/css" />
+    <script src="/police-pref-tokyo/common/js/jquery-3.6.3.min.js"></script>
+    <script src="/police-pref-tokyo/01/js/MKAYMA001other.js"></script>
+    <script src="/police-pref-tokyo/01/js/MKAYMA001MessagesJa.js"></script>
+    <script src="/police-pref-tokyo/01/js/MKAYMA001common.js"></script>   
+</head>
+<body id="maintenance">
+    <div id="header">
+        <div class="subheader"><span id="MKAYMA00M001"></span></div>
+        <h1 id="MKAYMA00M002"></h1>
+    </div>
+    <noscript>
+        JavaScriptが無効な環境では、本システムは利用できません。
+        <style>div#container{ display:none !important; }</style>
+    </noscript>
+    <form id="formContainer">
+        <div id="container">
+            <div id="data">
+                <div>
+                    <div class="rightfloat">
+                        <div class="leftfloat"><label for="strLangauge"><span id="MKAYMA00M003"></span></label></div>
+                        <select name="selectLangauge" id="selectLangauge" class=""></select>
+                    </div>
+                </div>
+                <div class="block" id="page01">
+                    <span id="MKAYMA00M340"></span
