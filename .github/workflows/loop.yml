@@ -1,15 +1,11 @@
 name: menkyo-loop
-# 1回のジョブで約5時間半、15分ごとにスキャンを続け、最後に次のジョブを自分で起動する
+# 1回のジョブで約5時間半、監視を続ける。終了の少し前に次のジョブを起動して、すき間なく引き継ぐ
 on:
   workflow_dispatch:
   schedule:
-    - cron: "7 */2 * * *"          # 保険：ループが止まっていたら再開（動いている間は待機列に入るだけ）
+    - cron: "7 */2 * * *"          # 保険：ループが止まっていたら再開（動いていれば即終了）
   push:
-    paths: ["run/loop.txt"]         # このファイルを書き換えてpushすると開始
-
-concurrency:
-  group: menkyo-loop
-  cancel-in-progress: false
+    paths: ["run/loop.txt"]
 
 permissions:
   contents: write
@@ -18,35 +14,43 @@ permissions:
 jobs:
   loop:
     runs-on: ubuntu-latest
-    timeout-minutes: 355
+    timeout-minutes: 350
     env:
       TZ: Asia/Tokyo
       DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
       BOOKING_INFO: ${{ secrets.BOOKING_INFO }}
       MY_DATE: ${{ vars.MY_DATE }}
       MODE: ${{ vars.MODE || 'observe' }}
+      GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Skip if another loop is running
+        id: guard
+        run: |
+          gh run list -R "$GITHUB_REPOSITORY" --workflow loop.yml --status in_progress --json databaseId,createdAt > runs.json
+          python3 - <<'EOF'
+          import json, os, datetime as dt
+          me = int(os.environ["GITHUB_RUN_ID"])
+          now = dt.datetime.now(dt.timezone.utc)
+          ages = [(now - dt.datetime.fromisoformat(r["createdAt"].replace("Z", "+00:00"))).total_seconds() / 3600
+                  for r in json.load(open("runs.json")) if r["databaseId"] != me]
+          healthy = [a for a in ages if a < 5.35]
+          print("other loops (hours):", ages)
+          open(os.environ["GITHUB_OUTPUT"], "a").write(f"skip={'1' if healthy else '0'}\n")
+          EOF
       - uses: actions/checkout@v4
+        if: steps.guard.outputs.skip != '1'
         with:
           ref: main
       - uses: actions/setup-python@v5
+        if: steps.guard.outputs.skip != '1'
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: monitor-requirements.txt
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: pw-${{ runner.os }}-${{ hashFiles('monitor-requirements.txt') }}
-      - run: pip install -r monitor-requirements.txt
-      - run: python -m playwright install --with-deps chromium
-      - run: |
+      - name: Watch loop
+        if: steps.guard.outputs.skip != '1'
+        run: |
           git config user.name "menkyo-bot"
           git config user.email "menkyo-bot@users.noreply.github.com"
-      - name: Watch loop
-        run: python watch.py loop
-      - name: Start next loop
-        if: always() && hashFiles('run/stop') == ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run loop.yml --ref main
+          python watch.py loop
+      - name: Restart after crash
+        if: failure() && steps.guard.outputs.skip != '1'
+        run: gh workflow run loop.yml -R "$GITHUB_REPOSITORY" --ref main

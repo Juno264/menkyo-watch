@@ -23,9 +23,11 @@ from collections import Counter, defaultdict
 from datetime import datetime, date, timedelta
 from pathlib import Path
 
-from playwright.sync_api import sync_playwright
-
-from monitor import START_URL, new_page, settle, do_step
+try:  # ブラウザ操作は調査用コマンドだけで使う。監視ループはAPIのみなのでPlaywright不要
+    from playwright.sync_api import sync_playwright
+    from monitor import START_URL, new_page, settle, do_step
+except ImportError:
+    sync_playwright = None
 
 MODE = os.environ.get("MODE", "observe")            # observe（10/2まで）/ hunt（卒業後）
 WEBHOOK = os.environ.get("DISCORD_WEBHOOK", "")
@@ -35,9 +37,14 @@ BOOK_URL = "https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/in
 SUMMARY_HOURS = {8, 20}                              # この時刻台の最初の実行でまとめを送る
 FAST = [("koto", "only")]                              # 優先：短い間隔でスキャン
 SLOW = [("fuchu", "only"), ("samezu", "only")]         # 通常：FAST_MIN×SLOW_EVERY 分ごと
-FAST_MIN = 1
-SLOW_EVERY = 15                                        # 1分×15＝15分
-COMMIT_EVERY = 15                                      # 保存（git push）は15分ごと
+FAST_SEC = 60                                          # 江東の通常の確認間隔
+PEAK_SEC = 30                                          # キャンセルが多い時間帯の確認間隔
+DEFAULT_PEAK_HOURS = {6, 7, 8, 18, 19, 20, 21, 22, 23} # データが貯まるまでの仮のピーク時間帯
+SLOW_MIN = 15                                          # 府中・鮫洲の確認間隔（分）
+COMMIT_MIN = 15                                        # 保存（git push）の間隔（分）
+MIN_GAP_SEC = 10                                       # 連続で問い合わせるときの最小間隔
+EXPIRY_MARGIN_SEC = 3                                  # データ更新予定時刻の何秒後に確認するか
+FAST_MIN = 1                                           # （レポート表示用）
 MAX_CLICKS = 10                                        # 残り0の日が続いても、1回に確認する日数の上限
 DETAIL_DAYS = 3                                      # 早い順に何日分、残り人数を読むか
 MONTHS = 4
@@ -61,6 +68,8 @@ W = "月火水木金土日"
 BASE = Path(__file__).resolve().parent
 DATA = BASE / "data"
 DATA.mkdir(exist_ok=True)
+DEBUG_DIR = BASE / "debug"
+DEBUG_DIR.mkdir(exist_ok=True)
 LATEST = DATA / "latest.json"
 SCANS = DATA / "scans.csv"
 EVENTS = DATA / "events.csv"
@@ -186,14 +195,26 @@ def _slotname(row):
     return "午前" if row.get("starttime", "") < "1000" else "午後"
 
 
+_MONTH_CACHE = {}   # (site, kind, month) -> 直近のcalgetres応答
+_DUE = {}           # (site, kind) -> 次のスキャンで問い合わせる月の集合（Noneなら全部）
+
+
 def api_scan(site, kind):
     """予約画面のカレンダーと同じデータ（calgetres）を月ごとに取得。1か月1回の問い合わせで全日・全時間帯の残りがわかる"""
     today = date.today()
     months = [m for m in WATCH_MONTHS if m >= f"{today:%Y%m}"]
-    counts, ages = {}, []
+    counts, ages, cts = {}, [], {}
+    due = _DUE.pop((site, kind), None)          # 更新予定の月だけ問い合わせる（他の月は前回の結果を使う）
     for ym in months:
-        d = _api("GET", "calgetres", {"date": ym, "coursecode": COURSE[kind], "placecode": PLACE[site], "user": "pub"})
-        ages.append(round(time.time() - float(d.get("currenttime", time.time()))))
+        cached = _MONTH_CACHE.get((site, kind, ym))
+        if due is not None and ym not in due and cached:
+            d = cached
+        else:
+            d = _api("GET", "calgetres", {"date": ym, "coursecode": COURSE[kind], "placecode": PLACE[site], "user": "pub"})
+            _MONTH_CACHE[(site, kind, ym)] = d
+        ct = float(d.get("currenttime", time.time()))
+        cts[ym] = ct
+        ages.append(round(time.time() - ct))
         for row in d.get("body", []):
             ds = f"{row['date'][:4]}-{row['date'][4:6]}-{row['date'][6:]}"
             if ds <= today.isoformat():
@@ -201,7 +222,7 @@ def api_scan(site, kind):
             left = max(0, int(row["capacity"]) - int(row["reservation"]))
             counts.setdefault(ds, {})[_slotname(row)] = left
     dates = sorted(d for d, c in counts.items() if sum(c.values()) > 0)
-    return {"dates": dates, "counts": {d: counts[d] for d in dates}, "cache_age": max(ages) if ages else None}
+    return {"dates": dates, "counts": {d: counts[d] for d in dates}, "cache_age": max(ages) if ages else None, "cts": cts}
 
 
 def live_counts(site, kind, d):
@@ -321,7 +342,7 @@ def run(targets=None):
                     scan_rows.append([now, site, kind, "ok", first, len(cur["dates"]),
                                       fc.get("午前", ""), fc.get("午後", ""), cur.get("cache_age", "")])
                     prev = prev_all.get(key)
-                    if prev and "dates" in prev:
+                    if prev and "dates" in prev and "cts" in prev:   # 旧方式（ブラウザ）のデータとは比較しない
                         last_prev = max(prev["dates"]) if prev["dates"] else ""
                         for e in diff(prev, cur, now):
                             ev_rows.append([e[0], site, kind] + e[1:])
@@ -352,6 +373,7 @@ def run(targets=None):
     if cancels:
         notify_cancels(cancels, base)
     maybe_summary()
+    return cur_all
 
 
 def notify_cancels(cancels, base):
@@ -436,7 +458,7 @@ def summary(hours=None):
     active = {f"{a}_{b}" for a, b in FAST + SLOW}
     events = [e for e in events if f"{e['site']}_{e['kind']}" in active
               and not (e["event"].startswith("date_") and e["time"] < DATE_EVENTS_VALID_FROM)]
-    L.append(f"⭐ **{JP[FAV]}試験場（第一希望）**　{FAST_MIN}分ごとに確認")
+    L.append(f"⭐ **{JP[FAV]}試験場（第一希望）**")
     for kind in ["only"]:
         k = f"{FAV}_{kind}"; s = latest.get(k, {})
         if not s.get("dates"):
@@ -455,7 +477,7 @@ def summary(hours=None):
     L.append("")
 
     # --- その他の試験場 ---
-    L.append(f"**その他の試験場**（{FAST_MIN * SLOW_EVERY}分ごと・最短日　午前/午後の残り）")
+    L.append(f"**その他の試験場**（{SLOW_MIN}分ごと・最短日　午前/午後の残り）")
     for site in ORDER[1:]:
         cells = []
         for kind in ["only"]:
@@ -507,9 +529,19 @@ def summary(hours=None):
     n_scan = len({r["time"] for r in scans}); ok = sum(r["result"] == "ok" for r in scans)
     L.append("")
     L.append(f"📊 キャンセルの動き：満席の日が空いた {len(opens)}回　／　残り人数が増えた {len(ups)}回（計{cancels}名分）")
-    hrs = Counter(datetime.fromisoformat(e["time"]).hour for e in opens + ups)
+    cev = [e for e in opens + ups if e["time"] >= DATE_EVENTS_VALID_FROM]
+    hrs = Counter(datetime.fromisoformat(e["time"]).hour for e in cev)
     if hrs:
         L.append("　時間帯別：" + "  ".join(f"{h}時:{n}" for h, n in sorted(hrs.items())))
+        wd = Counter(W[datetime.fromisoformat(e["time"]).weekday()] for e in cev)
+        L.append("　曜日別：" + "  ".join(f"{w_}:{wd[w_]}" for w_ in W if wd[w_]))
+        top = [f"{h}時" for h, _ in hrs.most_common(3)]
+        L.append("　キャンセルが多い時間帯（上位）：" + "、".join(top))
+    ph = sorted(peak_hours())
+    L.append(f"⏱ 江東の確認：{FAST_SEC}秒ごと（{','.join(str(h) for h in ph)}時台は{PEAK_SEC}秒ごと）＋データ更新の直後")
+    ttls = CacheClock().summary(FAV)
+    if any(ttls.values()):
+        L.append("　予約サイトのデータ更新周期（推定）：" + "  ".join(f"{m[4:]}月 約{t / 60:.1f}分" for m, t in sorted(ttls.items()) if t))
     L.append(f"　スキャン {n_scan}回（成功 {ok}/{len(scans)}）・記録開始 {scans[0]['time'][5:] if scans else '-'}")
     L.append("🎯 本番モード：キャンセルはその場で通知、このレポートは8時・20時" if MODE == "hunt"
              else "🔍 調査モード（10/2まで）：キャンセルはその場で通知、このレポートは8時・20時")
@@ -541,29 +573,133 @@ def _code_changed():
     return h != _CODE_HASH
 
 
-def loop(hours=5.6, interval_min=FAST_MIN):
+CACHE_LOG = DATA / "cache.csv"
+
+
+class CacheClock:
+    """calgetres のデータ作成時刻（currenttime）を記録し、更新周期（TTL）を推定して次の更新時刻を予測する"""
+
+    def __init__(self):
+        self.cts = defaultdict(list)          # (site, month) -> 観測した作成時刻（重複なし）
+        for r in _rows(CACHE_LOG):
+            self.cts[(r["site"], r["month"])].append(float(r["currenttime"]))
+        for k in self.cts:
+            self.cts[k] = sorted(set(self.cts[k]))[-200:]
+
+    def observe(self, site, cts):
+        rows = []
+        for m, ct in cts.items():
+            lst = self.cts[(site, m)]
+            if not lst or abs(ct - lst[-1]) > 1:
+                lst.append(ct)
+                rows.append([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), site, m, f"{ct:.1f}"])
+        if rows:
+            append(CACHE_LOG, ["time", "site", "month", "currenttime"], rows)
+
+    def ttl(self, site, month):
+        lst = self.cts.get((site, month), [])
+        diffs = [b - a for a, b in zip(lst, lst[1:]) if 5 <= b - a <= 1800]
+        return min(diffs) if len(diffs) >= 3 else None
+
+    def next_refresh(self, site, month):
+        lst, t = self.cts.get((site, month), []), self.ttl(site, month)
+        if not lst or not t:
+            return None
+        return lst[-1] + t + EXPIRY_MARGIN_SEC
+
+    def summary(self, site):
+        return {m: self.ttl(s_, m) for (s_, m) in self.cts if s_ == site}
+
+
+_PEAK_CACHE = {}
+
+
+def peak_hours():
+    """キャンセルが多い時間帯。36時間以上データが貯まったら実測から決める"""
+    h = datetime.now().strftime("%Y%m%d%H")
+    if h in _PEAK_CACHE:
+        return _PEAK_CACHE[h]
+    ev = [e for e in _rows(EVENTS) if e["event"] in ("count_up", "date_open") and e["time"] >= DATE_EVENTS_VALID_FROM]
+    hours = DEFAULT_PEAK_HOURS
+    if ev:
+        span = datetime.fromisoformat(ev[-1]["time"]) - datetime.fromisoformat(ev[0]["time"])
+        if span >= timedelta(hours=36):
+            c = Counter(datetime.fromisoformat(e["time"]).hour for e in ev)
+            avg = sum(c.values()) / 24
+            hours = {hh for hh, n in c.items() if n >= avg} or DEFAULT_PEAK_HOURS
+    _PEAK_CACHE.clear(); _PEAK_CACHE[h] = hours
+    return hours
+
+
+def dispatch_next():
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    if not repo:
+        return
+    r = subprocess.run(["gh", "workflow", "run", "loop.yml", "-R", repo, "--ref", "main"])
+    print("次のループを起動:", "OK" if r.returncode == 0 else "失敗")
+
+
+def loop(hours=5.6):
+    """江東は30〜60秒ごと＋データ更新の直後、府中・鮫洲は15分ごと。終了2分前に次のループを起動"""
     _code_changed()
-    """interval_minごとにスキャン→保存をくり返す（GitHubの1ジョブ上限6時間の内側で止める）"""
+    clock = CacheClock()
     end = time.time() + hours * 3600
-    n = 0
-    while time.time() < end - 60:
-        t0 = time.time()
-        try:
-            run(FAST + (SLOW if n % SLOW_EVERY == 0 else []))
-        except Exception as e:
-            print("run失敗:", e)
-            _notify_error_once(f"スキャン処理でエラー: {e.__class__.__name__}")
-        n += 1
-        if n % COMMIT_EVERY == 0:
-            commit_push()
-        if _code_changed():
-            left = (end - time.time()) / 3600
-            print("watch.py が更新されたので再起動")
-            os.execv(sys.executable, [sys.executable, __file__, "loop", f"{left:.3f}"])
-        wait = interval_min * 60 - (time.time() - t0)
-        if time.time() + wait >= end:
+    now = time.time()
+    next_fast, next_slow, next_commit = now, now, now + COMMIT_MIN * 60
+    dispatched, n = False, 0
+    while True:
+        now = time.time()
+        if now >= end - 30:
             break
-        time.sleep(max(30, wait))
+        if not dispatched and now >= end - 120:
+            dispatch_next(); dispatched = True
+        targets = []
+        if now >= next_fast:
+            targets += FAST
+        if now >= next_slow:
+            targets += SLOW
+            next_slow = now + SLOW_MIN * 60
+        if targets:
+            try:
+                res = run(targets)
+                n += 1
+            except Exception as e:
+                res = {}
+                print("run失敗:", e)
+                _notify_error_once(f"スキャン処理でエラー: {e.__class__.__name__}")
+            if any(t in FAST for t in targets):
+                t_now = time.time()
+                interval = PEAK_SEC if datetime.now().hour in peak_hours() else FAST_SEC
+                cands = []   # (次に確認する時刻, site, kind, month)
+                for site, kind in FAST:
+                    cur = res.get(f"{site}_{kind}") or {}
+                    clock.observe(site, cur.get("cts", {}))
+                    for m, ct in cur.get("cts", {}).items():
+                        t = clock.ttl(site, m)
+                        exp = clock.next_refresh(site, m)
+                        if t and exp and t_now - ct <= t + 30:
+                            while exp < t_now + MIN_GAP_SEC:
+                                exp += t      # 過ぎた更新予定は次の周期へ
+                            # 周期がわかっている月は「更新の直後」に確認（長くても10分おき）
+                            cands.append((min(exp, t_now + max(interval, 600)), site, kind, m))
+                        else:
+                            # 周期が未推定、または予測どおりに更新されていない月は通常間隔
+                            cands.append((t_now + interval, site, kind, m))
+                if cands:
+                    next_fast = min(c[0] for c in cands)
+                    for site, kind in FAST:
+                        _DUE[(site, kind)] = {m for c_t, s_, k_, m in cands if (s_, k_) == (site, kind) and c_t <= next_fast + 2}
+                else:
+                    next_fast = t_now + interval
+        if now >= next_commit:
+            commit_push()
+            next_commit = now + COMMIT_MIN * 60
+            if _code_changed():
+                left = (end - time.time()) / 3600
+                print("watch.py が更新されたので再起動")
+                os.execv(sys.executable, [sys.executable, __file__, "loop", f"{left:.4f}"] + (["dispatched"] if dispatched else []))
+        wake = min(next_fast, next_slow, next_commit, end - 30, (end - 120) if not dispatched else end)
+        time.sleep(max(1.0, wake - time.time()))
     commit_push()
     print(f"loop終了: {n}回")
 
@@ -585,8 +721,8 @@ if __name__ == "__main__":
                 _click_text(page, st["text"]); page.wait_for_load_state("domcontentloaded")
             ds = read_dates(page)
             c = read_counts(page, d) if d in ds else "not selectable"
-            (DATA / "debugdate.txt").write_text(f"{d} in dates={d in ds}\ncounts={c}\n\n" + page.inner_text("body"), encoding="utf-8")
-            page.screenshot(path=str(DATA / "debugdate.png"), full_page=True)
+            (DEBUG_DIR / "debugdate.txt").write_text(f"{d} in dates={d in ds}\ncounts={c}\n\n" + page.inner_text("body"), encoding="utf-8")
+            page.screenshot(path=str(DEBUG_DIR / "debugdate.png"), full_page=True)
     elif cmd == "netlog":
         site, kind = sys.argv[2], sys.argv[3]
         log = []
@@ -615,7 +751,7 @@ if __name__ == "__main__":
                 read_counts(page, ds[0])
             page.wait_for_timeout(1500)
             cookies = page.context.cookies()
-        (DATA / "netlog.json").write_text(json.dumps({"log": log, "cookies": [{k: c[k] for k in ("name", "domain", "path")} for c in cookies]}, ensure_ascii=False, indent=1), encoding="utf-8")
+        (DEBUG_DIR / "netlog.json").write_text(json.dumps({"log": log, "cookies": [{k: c[k] for k in ("name", "domain", "path")} for c in cookies]}, ensure_ascii=False, indent=1), encoding="utf-8")
     elif cmd == "grepjs":
         out = {}
         with sync_playwright() as pw:
@@ -634,14 +770,14 @@ if __name__ == "__main__":
                       let i = -1; while ((i = t.indexOf(kw, i + 1)) >= 0 && hits.length < 20) hits.push('[' + kw + '] ' + t.slice(Math.max(0, i - 250), i + 350)); }
                     r[s.src] = hits; }
                   return r; }""")
-        (DATA / "grepjs.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
+        (DEBUG_DIR / "grepjs.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     elif cmd == "testhunt":
         discord("🧪 **本番通知のテスト（実際の空きではありません）**")
         for m in [f"@here ⭐🔥 **【江東】** **キャンセル枠が出ました！** 江東・両方　**{fmt_d('2026-11-19')}**　残り 午前1 / 午後0"] + \
                  booking_messages("koto", "both", "2026-11-19", {"午前": 1, "午後": 0}):
             discord(m)
     elif cmd == "test":
-        (DATA / "discord_test.txt").write_text(f"{datetime.now():%m/%d %H:%M} webhook_set={bool(WEBHOOK)}", encoding="utf-8")
+        (DEBUG_DIR / "discord_test.txt").write_text(f"{datetime.now():%m/%d %H:%M} webhook_set={bool(WEBHOOK)}", encoding="utf-8")
         discord("✅ 本免ウォッチの通知テストです。これが見えていれば設定OK")
         discord(summary())
     else:

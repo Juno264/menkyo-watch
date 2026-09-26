@@ -64,6 +64,6 @@ jobs:
         run: |
           git config user.name "menkyo-bot"
           git config user.email "menkyo-bot@users.noreply.github.com"
-          for f in data scan.json observations.csv changes.csv analysis.txt history state debug; do [ -e "$f" ] && git add -A -- "$f"; done; true
+          for f in debug; do [ -e "$f" ] && git add -A -- "$f"; done; true
           git diff --cached --quiet || git commit -m "data $(date '+%m/%d %H:%M')" -q
           for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done
