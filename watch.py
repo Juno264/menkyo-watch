@@ -337,6 +337,7 @@ def _rows(path):
     return list(csv.DictReader(path.open(encoding="utf-8"))) if path.exists() else []
 
 
+DATE_EVENTS_VALID_FROM = "2026-09-26 21:57"   # これより前の日付の出入り記録は「残り0名の日」を誤判定していたため集計から除外
 FAV = "koto"   # 第一希望の試験場（レポートの一番上に強調表示）
 ORDER = ["koto", "fuchu", "samezu"]
 
@@ -366,7 +367,8 @@ def summary(hours=None):
 
     # --- 第一希望：江東 ---
     active = {f"{a}_{b}" for a, b in FAST + SLOW}
-    events = [e for e in events if f"{e['site']}_{e['kind']}" in active]
+    events = [e for e in events if f"{e['site']}_{e['kind']}" in active
+              and not (e["event"].startswith("date_") and e["time"] < DATE_EVENTS_VALID_FROM)]
     L.append(f"⭐ **{JP[FAV]}試験場（第一希望）**　{FAST_MIN}分ごとに確認")
     for kind in ["only"]:
         k = f"{FAV}_{kind}"; s = latest.get(k, {})
