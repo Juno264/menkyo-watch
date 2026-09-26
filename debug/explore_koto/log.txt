@@ -1,9 +1,16 @@
 status 200 https://license-renew.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index_000.html
 step0 ok {'kind': 'click', 'text': '学科試験の予約はこちら'} -> https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index.html?lang=ja
+   checked: []
 step1 ok {'kind': 'click', 'text': '「利用規約について」を読み、同意しました。'} -> https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index.html?lang=ja
+   checked: ['TermsOfServiceCheck=1 「利用規約について」を読み、同意しました。']
 step2 ok {'kind': 'click', 'text': '手続を開始する'} -> https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/01/html/main.html?lang=ja
+   checked: []
 step3 ok {'kind': 'click', 'text': '空き状況カレンダー'} -> https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/calendar/01/html/main.html?lang=ja
+   checked: ['typeChoice=1 学科試験']
 step4 ok {'kind': 'click', 'text': '教習所卒業等'} -> https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/calendar/01/html/main.html?lang=ja
+   checked: ['typeChoice=1 学科試験', 'typeDetailChoice=11 【卒業証明書をお持ちの方】\n【検査合格証明書をお持ちの方】※']
 step5 ok {'kind': 'click', 'text': '免許証のみ'} -> https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/calendar/01/html/main.html?lang=ja
+   checked: ['typeChoice=1 学科試験', 'typeDetailChoice=11 【卒業証明書をお持ちの方】【検査合格証明書をお持ちの方】※江', 'newLicenseChoice=1 免許証のみ']
 step6 ok {'kind': 'click', 'text': '江東試験場'} -> https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/calendar/01/html/main.html?lang=ja
+   checked: ['typeChoice=1 学科試験', 'typeDetailChoice=11 【卒業証明書をお持ちの方】【検査合格証明書をお持ちの方】※江', 'newLicenseChoice=1 免許証のみ', 'placeChoice=250:江東試験場 江東試験場']
 final url: https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/calendar/01/html/main.html?lang=ja
