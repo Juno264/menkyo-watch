@@ -25,8 +25,7 @@ jobs:
     env:
       TZ: Asia/Tokyo
       NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-      PROXY_URL: https://menkyo-watch-rosy.vercel.app/api/fetch
-      PROXY_TOKEN: ${{ secrets.PROXY_TOKEN }}
+      DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
       MODE: ${{ vars.MODE || 'observe' }}
       JITTER_MAX_SEC: "0"
     steps:
@@ -46,15 +45,18 @@ jobs:
       - name: Run
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then CMD="$(head -1 run/cmd.txt)";
-          else CMD="${{ github.event.inputs.cmd || 'check' }}"; fi
+          else CMD="${{ github.event.inputs.cmd || 'watch run' }}"; fi
+          CMD="${CMD#direct:}"
           echo "cmd: $CMD"
-          case "$CMD" in direct:*) export NO_RELAY=1; CMD="${CMD#direct:}";; esac
-          python monitor.py $CMD
+          case "$CMD" in
+            watch\ *) python watch.py ${CMD#watch } ;;
+            *) python monitor.py $CMD ;;
+          esac
       - name: Save data
         if: always()
         run: |
           git config user.name "menkyo-bot"
           git config user.email "menkyo-bot@users.noreply.github.com"
-          for f in scan.json observations.csv changes.csv analysis.txt history state debug; do [ -e "$f" ] && git add -A -- "$f"; done; true
+          for f in data scan.json observations.csv changes.csv analysis.txt history state debug; do [ -e "$f" ] && git add -A -- "$f"; done; true
           git diff --cached --quiet || git commit -m "data $(date '+%m/%d %H:%M')" -q
           for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done
