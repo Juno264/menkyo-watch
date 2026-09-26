@@ -25,6 +25,8 @@ jobs:
       TZ: Asia/Tokyo
       NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
       DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      BOOKING_INFO: ${{ secrets.BOOKING_INFO }}
+      MY_DATE: ${{ vars.MY_DATE }}
       MODE: ${{ vars.MODE || 'observe' }}
       GH_TOKEN: ${{ github.token }}
       JITTER_MAX_SEC: "0"

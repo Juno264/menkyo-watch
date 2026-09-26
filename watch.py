@@ -29,6 +29,9 @@ from monitor import START_URL, new_page, settle, do_step
 
 MODE = os.environ.get("MODE", "observe")            # observe（10/2まで）/ hunt（卒業後）
 WEBHOOK = os.environ.get("DISCORD_WEBHOOK", "")
+BOOKING_INFO = os.environ.get("BOOKING_INFO", "")   # 予約入力用の個人情報（GitHub Secrets。本番通知のときだけ送る）
+MY_DATE = os.environ.get("MY_DATE", "")             # 今持っている予約の日付（例 2026-12-10）。これより早い空きだけ通知
+BOOK_URL = "https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index.html?lang=ja"
 SUMMARY_HOURS = {8, 22}                              # この時刻台の最初の実行でまとめを送る
 DETAIL_DAYS = 3                                      # 早い順に何日分、残り人数を読むか
 MONTHS = 4
@@ -167,6 +170,35 @@ def discord(text):
         time.sleep(1)
 
 
+def booking_messages(site, kind, d, counts):
+    """本番通知：そのまま予約に進めるよう、手順と入力情報を送る（情報は1項目ずつ別メッセージ＝長押しでコピーしやすい）"""
+    slots = [f"{k}試験（受付 {'8:00' if k == '午前' else '11:00'}）残り{n}名" for k, n in (counts or {}).items() if isinstance(n, int) and n > 0]
+    msgs = ["\n".join([
+        "━━━━━━━━━━━━━━",
+        "🚗 **今すぐ予約する手順**",
+        f"① 予約サイト：{BOOK_URL}",
+        "② （今の予約がある場合）先に「予約状況確認/キャンセル」でキャンセル",
+        "③ 利用規約に同意 →「手続を開始する」→「学科試験」",
+        f"④「教習所卒業等」→「{KINDS[kind]}」",
+        f"⑤ 受験場所「{SITES[site]}」→ 日付 **{fmt_d(d)}**",
+        "⑥ 受付時間：" + ("、".join(slots) if slots else "空いている方"),
+        "⑦ 下の情報をコピーして入力 → 予約完了画面のQRコードと受付番号を保存",
+        "━━━━━━━━━━━━━━",
+    ])]
+    for line in [l.strip() for l in BOOKING_INFO.splitlines() if l.strip()]:
+        msgs.append(line)
+    if not BOOKING_INFO:
+        msgs.append("（入力情報が未登録です：GitHub Secrets の BOOKING_INFO に登録してください）")
+    return msgs
+
+
+def _is_target(d, prev_first):
+    """本番で通知すべき日付か：自分の予約日（MY_DATE）より前、未設定なら直前の最短日より前"""
+    if MY_DATE:
+        return d < MY_DATE
+    return bool(prev_first) and d < prev_first
+
+
 def diff(prev, cur, now):
     """前回との差分をイベントにする"""
     ev = []
@@ -189,6 +221,7 @@ def run():
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     prev_all = json.loads(LATEST.read_text(encoding="utf-8")) if LATEST.exists() else {}
     cur_all, scan_rows, ev_rows, alerts = {}, [], [], []
+    hunts = []   # 本番通知の対象 (site, kind, date, counts)
     base = baseline()
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
@@ -204,6 +237,10 @@ def run():
                                       fc.get("午前", ""), fc.get("午後", ""), round(time.time() - t0, 1)])
                     prev = prev_all.get(key)
                     if prev and "dates" in prev:
+                        pf = prev["dates"][0] if prev.get("dates") else None
+                        for d in cur["dates"]:
+                            if d not in prev["dates"] and _is_target(d, pf):
+                                hunts.append((site, kind, d, cur["counts"].get(d)))
                         for e in diff(prev, cur, now):
                             ev_rows.append([e[0], site, kind] + e[1:])
                             if e[1] == "date_open" and e[6] == "earlier":
@@ -237,10 +274,17 @@ def run():
     errors = [r for r in scan_rows if r[3] == "error"]
     if len(errors) == 6:
         _notify_error_once("6パターンすべて失敗しました。サイトの画面が変わった可能性があります。")
-    if alerts:
-        head = "@here " if MODE == "hunt" else ""
-        tail = "\n今すぐ予約サイトへ！" if MODE == "hunt" else "\n（調査期間中：記録のみ）"
-        discord(head + "\n".join(m for _, m in sorted(alerts, key=lambda a: a[0])) + tail)
+    if MODE == "hunt":
+        hunts.sort(key=lambda h: (h[0] != FAV, h[2]))   # 江東を優先、次に早い日
+        for site, kind, d, counts in hunts[:3]:
+            star = "⭐🔥 **【江東】**" if site == FAV else "🔥"
+            head = (f"@here {star} **キャンセル枠が出ました！** {JP[site]}・{JP[kind]}　**{fmt_d(d)}**"
+                    + (f"　残り {_slot(counts)}" if counts else ""))
+            discord(head)
+            for m in booking_messages(site, kind, d, counts):
+                discord(m)
+    elif alerts:
+        discord("\n".join(m for _, m in sorted(alerts, key=lambda a: a[0])) + "\n（調査期間中：記録のみ）")
     maybe_summary()
 
 
@@ -416,6 +460,11 @@ if __name__ == "__main__":
         loop(float(sys.argv[2]) if len(sys.argv) > 2 else 5.6)
     elif cmd == "report":
         discord(summary())
+    elif cmd == "testhunt":
+        discord("🧪 **本番通知のテスト（実際の空きではありません）**")
+        for m in [f"@here ⭐🔥 **【江東】** **キャンセル枠が出ました！** 江東・両方　**{fmt_d('2026-11-19')}**　残り 午前1 / 午後0"] + \
+                 booking_messages("koto", "both", "2026-11-19", {"午前": 1, "午後": 0}):
+            discord(m)
     elif cmd == "test":
         (DATA / "discord_test.txt").write_text(f"{datetime.now():%m/%d %H:%M} webhook_set={bool(WEBHOOK)}", encoding="utf-8")
         discord("✅ 本免ウォッチの通知テストです。これが見えていれば設定OK")

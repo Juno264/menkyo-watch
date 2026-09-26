@@ -22,6 +22,8 @@ jobs:
     env:
       TZ: Asia/Tokyo
       DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      BOOKING_INFO: ${{ secrets.BOOKING_INFO }}
+      MY_DATE: ${{ vars.MY_DATE }}
       MODE: ${{ vars.MODE || 'observe' }}
     steps:
       - uses: actions/checkout@v4
