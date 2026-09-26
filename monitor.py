@@ -192,6 +192,9 @@ def record(name):
 
 
 def do_step(page, s):
+    if s["kind"] == "css":
+        page.locator(s["sel"]).first.click(timeout=10000)
+        return
     if s["kind"] == "click":
         t = s["text"]
         for loc in (page.get_by_role("button", name=t, exact=True),
