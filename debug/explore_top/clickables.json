@@ -1,0 +1,58 @@
+[
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "Select a language / 言語を選択してください",
+  "href": ""
+ },
+ {
+  "tag": "SELECT",
+  "type": "select-one",
+  "name": "selectLangauge",
+  "text": "日本語 English 中国语 Tiếng Việt नेपाली မြန်မာဘာသာ",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "運転免許更新の予約はこちら",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "licenserenew",
+  "text": "on",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "仮免許学科試験の予約はこちら",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "provisional",
+  "text": "on",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "学科試験の予約はこちら",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "licensetest",
+  "text": "on",
+  "href": ""
+ }
+]
