@@ -1,0 +1,4 @@
+__pycache__/
+.lock
+log.txt
+debug/*_latest.png

@@ -1,0 +1,57 @@
+name: menkyo-monitor
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"        # 15分ごと（GitHub側の都合で数分〜十数分遅れることがある）
+  push:
+    paths: ["run/cmd.txt"]       # このファイルを書き換えてpushすると、その内容のコマンドを実行
+  workflow_dispatch:
+    inputs:
+      cmd:
+        description: "check / explore <name> / analyze / test-notify"
+        default: "check"
+
+concurrency:
+  group: menkyo
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      TZ: Asia/Tokyo
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      MODE: ${{ vars.MODE || 'observe' }}
+      JITTER_MAX_SEC: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+      - run: pip install -r requirements.txt
+      - run: python -m playwright install --with-deps chromium
+      - name: Run
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then CMD="$(head -1 run/cmd.txt)";
+          else CMD="${{ github.event.inputs.cmd || 'check' }}"; fi
+          echo "cmd: $CMD"
+          python monitor.py $CMD
+      - name: Save data
+        if: always()
+        run: |
+          git config user.name "menkyo-bot"
+          git config user.email "menkyo-bot@users.noreply.github.com"
+          git add -A observations.csv changes.csv analysis.txt history state debug 2>/dev/null || true
+          git diff --cached --quiet || git commit -m "data $(date '+%m/%d %H:%M')" -q
+          for i in 1 2 3; do git pull --rebase -q && git push -q && break; sleep 5; done
