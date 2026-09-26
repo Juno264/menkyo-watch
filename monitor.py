@@ -334,6 +334,9 @@ def explore(name):
                 do_step(page, s)
                 settle(page)
                 log.append(f"step{i} ok {s} -> {page.url}")
+                checked = page.evaluate("""() => [...document.querySelectorAll('input:checked')].map(e => (e.name||e.id)+'='+e.value+' '+((e.closest('label')||{}).innerText||'').trim().slice(0,30))""")
+                log.append(f"   checked: {checked}")
+                page.screenshot(path=str(out / f"step{i}.png"), full_page=True)
         except Exception as e:
             log.append(f"ERROR {e.__class__.__name__}: {str(e)[:300]}")
         time.sleep(6)
