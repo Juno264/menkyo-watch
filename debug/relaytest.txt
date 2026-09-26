@@ -1,0 +1,3 @@
+PROXY_URL=https://menkyo-watch-rosy.vercel.app/api/fetch token_set=False
+GET error: HTTP Error 401: Unauthorized b'{"error":"bad token"}'
+POST error: HTTP Error 401: Unauthorized
