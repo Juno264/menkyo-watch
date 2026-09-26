@@ -1,0 +1,4 @@
+{
+  "regions": ["hnd1"],
+  "functions": { "api/fetch.js": { "maxDuration": 30 } }
+}

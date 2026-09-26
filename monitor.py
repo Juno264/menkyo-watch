@@ -12,6 +12,7 @@ MODE = "observe"（調査：記録だけ、通知はエラーと1日1回のま�
 MODE = "hunt"   （本番：変化のたびに即通知）
 定期実行は README.md を参照。
 """
+import base64
 import csv
 import os
 import hashlib
@@ -37,6 +38,10 @@ MODE = os.environ.get("MODE", "observe")   # 10/2まで "observe"、卒業後に
 JITTER_MAX_SEC = int(os.environ.get("JITTER_MAX_SEC", "60"))                       # 毎回0〜60秒ずらしてアクセス（15分間隔の実行と重ならない範囲）
 DAILY_SUMMARY_HOUR = 22                    # observe中、この時刻台の実行で1日のまとめを通知
 # ================
+
+PROXY_URL = os.environ.get("PROXY_URL", "")      # VercelのURL（例 https://xxx.vercel.app/api/fetch）
+PROXY_TOKEN = os.environ.get("PROXY_TOKEN", "")
+PROXY_PATTERN = re.compile(r"^https://[^/]*tokyo-madoguchi-yoyaku\.com/")
 
 BASE = Path(__file__).resolve().parent
 PROFILES = BASE / "profiles"
@@ -102,6 +107,42 @@ def append_csv(path, header, row):
         if new:
             w.writerow(header)
         w.writerow(row)
+
+
+def _relay(route):
+    """予約サイト宛ての通信を東京の中継役に回し、返ってきた内容をそのままブラウザに渡す"""
+    req = route.request
+    try:
+        body = req.post_data_buffer
+    except Exception:
+        body = None
+    payload = json.dumps({
+        "url": req.url, "method": req.method, "headers": req.all_headers(),
+        "body_b64": base64.b64encode(body).decode() if body else None,
+    }).encode()
+    last = None
+    for _ in range(2):
+        try:
+            r = urllib.request.Request(PROXY_URL, data=payload, method="POST",
+                                       headers={"content-type": "application/json", "x-proxy-token": PROXY_TOKEN})
+            data = json.loads(urllib.request.urlopen(r, timeout=40).read())
+            headers = dict(data.get("headers") or {})
+            if data.get("set_cookie"):
+                headers["set-cookie"] = "\n".join(data["set_cookie"])
+            route.fulfill(status=data["status"], headers=headers, body=base64.b64decode(data["body_b64"]))
+            return
+        except Exception as e:
+            last = e
+            time.sleep(2)
+    print("relay失敗:", req.url, last)
+    route.abort()
+
+
+def new_page(browser, **kw):
+    ctx = browser.new_context(locale="ja-JP", **kw)
+    if PROXY_URL:
+        ctx.route(PROXY_PATTERN, _relay)
+    return ctx.new_page()
 
 
 def settle(page):
@@ -177,7 +218,7 @@ def normalize(text):
 def check_one(pw, name):
     steps = json.loads((PROFILES / f"{name}.json").read_text(encoding="utf-8"))
     browser = pw.chromium.launch(headless=True)
-    page = browser.new_page(locale="ja-JP")
+    page = new_page(browser)
     now = datetime.now()
     stamp = now.strftime("%Y%m%d_%H%M")
     iso = now.strftime("%Y-%m-%d %H:%M:%S")
@@ -276,7 +317,7 @@ def explore(name):
     out.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
-        page = browser.new_page(locale="ja-JP", viewport={"width": 1280, "height": 900})
+        page = new_page(browser, viewport={"width": 1280, "height": 900})
         log = []
         try:
             resp = page.goto(START_URL, timeout=45000)
