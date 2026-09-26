@@ -230,6 +230,12 @@ def diff(prev, cur, now):
         ev.append([now, "date_open", d, "", "", "", "earlier" if prev_first and d < prev_first else ""])
     for d in sorted(pd - cd):
         ev.append([now, "date_close", d, "", "", "", ""])
+    # 「選べるけど残り0名」の日の出入り（キャンセル枠がすぐ埋まった名残か、手続き中の仮押さえかを見分ける）
+    pz, cz = set(prev.get("zero", [])), set(cur.get("zero", []))
+    for d in sorted(cz - pz):
+        ev.append([now, "zero_on", d, "", "", "", "from_open" if d in pd else "from_closed"])
+    for d in sorted(pz - cz):
+        ev.append([now, "zero_off", d, "", "", "", "to_open" if d in cd else "to_closed"])
     for d, c in cur.get("counts", {}).items():
         pc = prev.get("counts", {}).get(d, {})
         for slot, n in c.items():
@@ -416,6 +422,24 @@ def summary(hours=None):
             L.append(f"{star}{e['time'][5:]}　{JP[e['site']]}・{JP[e['kind']]} → **{fmt_d(e['date'])}**")
     else:
         L.append(f"{span}、記録開始時より早い日程はまだ出ていません")
+
+    # --- 選べるけど0名の日 ---
+    zon = [e for e in events if e["event"] == "zero_on"]
+    zoff = [e for e in events if e["event"] == "zero_off"]
+    if zon or zoff:
+        opened_at = {}; lives = []
+        for e in sorted(zon + zoff, key=lambda e: e["time"]):
+            k = (e["site"], e["kind"], e["date"])
+            if e["event"] == "zero_on":
+                opened_at[k] = datetime.fromisoformat(e["time"])
+            elif k in opened_at:
+                lives.append((datetime.fromisoformat(e["time"]) - opened_at.pop(k)).total_seconds() / 60)
+        out = Counter(e["note"] for e in zoff)
+        L.append("")
+        L.append(f"🔎 選べるけど残り0名の日：出現 {len(zon)}回 → 消えた {out['to_closed']}回／1名以上に戻った {out['to_open']}回")
+        if lives:
+            ls = sorted(lives)
+            L.append(f"　続いた時間：中央値 約{ls[len(ls) // 2]:.0f}分（最短 約{ls[0]:.0f}分・最長 約{ls[-1]:.0f}分、{len(ls)}件）")
 
     # --- 統計 ---
     ups = [e for e in events if e["event"] == "count_up"]
