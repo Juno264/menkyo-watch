@@ -1,2 +1,2 @@
-relayget https://license-renew.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index.html?lang=ja https://provisional.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index.html?lang=ja https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index.html?lang=ja
-# 1790417898406738492
+explore s1
+# 1790417947352528396
