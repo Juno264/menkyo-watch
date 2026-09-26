@@ -32,7 +32,7 @@ WEBHOOK = os.environ.get("DISCORD_WEBHOOK", "")
 BOOKING_INFO = os.environ.get("BOOKING_INFO", "")   # 予約入力用の個人情報（GitHub Secrets。本番通知のときだけ送る）
 MY_DATE = os.environ.get("MY_DATE", "")             # 今持っている予約の日付（例 2026-12-10）。これより早い空きだけ通知
 BOOK_URL = "https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index.html?lang=ja"
-SUMMARY_HOURS = {8, 22}                              # この時刻台の最初の実行でまとめを送る
+SUMMARY_HOURS = {8, 20}                              # この時刻台の最初の実行でまとめを送る
 FAST = [("koto", "only")]                              # 優先：短い間隔でスキャン
 SLOW = [("fuchu", "only"), ("samezu", "only")]         # 通常：FAST_MIN×SLOW_EVERY 分ごと
 FAST_MIN = 3
@@ -244,7 +244,7 @@ def run(targets=None):
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     prev_all = json.loads(LATEST.read_text(encoding="utf-8")) if LATEST.exists() else {}
     cur_all, scan_rows, ev_rows, alerts = {}, [], [], []
-    hunts = []   # 本番通知の対象 (site, kind, date, counts)
+    cancels = []   # キャンセル検知 (site, kind, date, counts, 内容)
     base = baseline()
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
@@ -260,26 +260,15 @@ def run(targets=None):
                                       fc.get("午前", ""), fc.get("午後", ""), round(time.time() - t0, 1)])
                     prev = prev_all.get(key)
                     if prev and "dates" in prev:
-                        pf = prev["dates"][0] if prev.get("dates") else None
-                        for d in cur["dates"]:
-                            if d not in prev["dates"] and _is_target(d, pf):
-                                hunts.append((site, kind, d, cur["counts"].get(d)))
+                        last_prev = max(prev["dates"]) if prev["dates"] else ""
                         for e in diff(prev, cur, now):
                             ev_rows.append([e[0], site, kind] + e[1:])
-                            if e[1] == "date_open" and e[6] == "earlier":
-                                b = base.get(key)
-                                cc = cur["counts"].get(e[2])
-                                msg = (f"**{JP[site]}・{JP[kind]}** で **{fmt_d(e[2])}** が選べるようになりました"
-                                       f"（直前の最短 {fmt_d(prev['dates'][0])}"
-                                       + (f"、記録開始時 {fmt_d(b)}" if b else "") + "）"
-                                       + (f"　残り {_slot(cc)}" if cc else ""))
-                                if site == FAV:
-                                    msg = "⭐🔥 **【江東】** " + msg
-                                elif b and e[2] < b:
-                                    msg = "🔥 " + msg
-                                else:
-                                    msg = "🟢 " + msg
-                                alerts.append((site != FAV, msg))
+                            _, typ, d, slot, old, new, _ = e
+                            # キャンセル＝残り人数の増加、または満席だった日に空き（90日先の新規公開日は除く）
+                            if typ == "count_up":
+                                cancels.append((site, kind, d, cur["counts"].get(d), f"{slot} {old}→{new}名"))
+                            elif typ == "date_open" and last_prev and d < last_prev:
+                                cancels.append((site, kind, d, cur["counts"].get(d), "満席だった日に空き"))
                     cur_all[key] = cur
                 except Exception as e:
                     scan_rows.append([now, site, kind, "error", "", "", "", "", round(time.time() - t0, 1)])
@@ -298,18 +287,30 @@ def run(targets=None):
     errors = [r for r in scan_rows if r[3] == "error"]
     if errors and len(errors) == len(scan_rows):
         _notify_error_once("スキャンがすべて失敗しました。サイトの画面が変わった可能性があります。")
-    if MODE == "hunt":
-        hunts.sort(key=lambda h: (h[0] != FAV, h[2]))   # 江東を優先、次に早い日
-        for site, kind, d, counts in hunts[:3]:
-            star = "⭐🔥 **【江東】**" if site == FAV else "🔥"
-            head = (f"@here {star} **キャンセル枠が出ました！** {JP[site]}・{JP[kind]}　**{fmt_d(d)}**"
-                    + (f"　残り {_slot(counts)}" if counts else ""))
-            discord(head)
-            for m in booking_messages(site, kind, d, counts):
-                discord(m)
-    elif alerts:
-        discord("\n".join(m for _, m in sorted(alerts, key=lambda a: a[0])) + "\n（調査期間中：記録のみ）")
+    if cancels:
+        notify_cancels(cancels, base)
     maybe_summary()
+
+
+def notify_cancels(cancels, base):
+    cancels.sort(key=lambda c: (c[0] != FAV, c[2]))          # 江東を先頭、次に早い日
+    lines = []
+    for site, kind, d, counts, what in cancels:
+        b = base.get(f"{site}_{kind}")
+        early = " 🔥**記録開始時より早い**" if b and d < b else ""
+        tag = "⭐ **【江東】**" if site == FAV else f"**{JP[site]}**"
+        lines.append(f"{tag} **{fmt_d(d)}**　{what}" + (f"（残り {_slot(counts)}）" if counts else "") + early)
+    if MODE != "hunt":
+        discord("🟡 **キャンセルを検知しました**（調査期間中・予約はまだできません）\n" + "\n".join(lines))
+        return
+    # 本番：即時通知＋予約リンクと入力情報（今の予約日 MY_DATE より早いものがあればそれを案内）
+    target = [c for c in cancels if not MY_DATE or c[2] < MY_DATE]
+    discord(("@here " if target else "") + "🚨 **キャンセル枠が出ました！**\n" + "\n".join(lines)
+            + ("" if target else f"\n（今の予約日 {fmt_d(MY_DATE)} より早い枠ではないため、予約案内は省略）"))
+    if target:
+        site, kind, d, counts, _ = target[0]
+        for m in booking_messages(site, kind, d, counts):
+            discord(m)
 
 
 def _notify_error_once(msg):
@@ -426,7 +427,8 @@ def summary(hours=None):
     if hrs:
         L.append("　時間帯別：" + "  ".join(f"{h}時:{n}" for h, n in sorted(hrs.items())))
     L.append(f"　スキャン {n_scan}回（成功 {ok}/{len(scans)}）・記録開始 {scans[0]['time'][5:] if scans else '-'}")
-    L.append("🎯 本番モード" if MODE == "hunt" else "🔍 調査モード（10/2まで記録のみ）")
+    L.append("🎯 本番モード：キャンセルはその場で通知、このレポートは8時・20時" if MODE == "hunt"
+             else "🔍 調査モード（10/2まで）：キャンセルはその場で通知、このレポートは8時・20時")
     return "\n".join(L)
 
 
