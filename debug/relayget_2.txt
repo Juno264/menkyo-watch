@@ -1,6 +1,6 @@
-URL https://license-renew.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index.html?lang=ja
+URL https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index.html?lang=ja
 status 200
-headers {"accept-ranges": "bytes", "age": "43201", "cache-control": "no-store", "content-security-policy": "default-src 'self' *.tokyo-madoguchi-yoyaku.com; frame-ancestors 'self' *.tokyo-madoguchi-yoyaku.com; img-src 'self' data: sqrcservice.com qkeysdemo.com; style-src 'self' 'sha256-GyUVO2cJDLKQWzw1Jb2xdis62d6+vH10YBRKs1wrBLs='", "content-type": "text/html", "date": "Fri, 25 Sep 2026 22:18:46 GMT", "etag": "\"b76b97b9b338d6b9219312c6bc367e9f\"", "last-modified": "Wed, 16 Sep 2026 08:06:04 GMT", "pragma": "no-cache", "referrer-policy": "same-origin", "server": "AmazonS3", "strict-transport-security": "max-age=63072000; includeSubDomains; preload", "via": "1.1 f6ce557a7f608e75d140cb994f4b4340.cloudfront.net (CloudFront)", "x-amz-cf-id": "fWHP7CGLLNmysQjIB59plelpx4ZOZ5eKH7YAWBgztQDoUuqistnt4g==", "x-amz-cf-pop": "NRT57-P5", "x-amz-server-side-encryption": "AES256", "x-amz-version-id": "QnBppQyvjaC7JxxYu4xx_df.Th3blDFC", "x-cache": "Hit from cloudfront", "x-content-type-options": "nosniff", "x-frame-options": "DENY", "x-xss-protection": "1; mode=block"}
+headers {"accept-ranges": "bytes", "age": "69970", "cache-control": "no-store", "content-security-policy": "default-src 'self' *.tokyo-madoguchi-yoyaku.com; frame-ancestors 'self' *.tokyo-madoguchi-yoyaku.com; img-src 'self' data: sqrcservice.com qkeysdemo.com; style-src 'self' 'sha256-GyUVO2cJDLKQWzw1Jb2xdis62d6+vH10YBRKs1wrBLs='", "content-type": "text/html", "date": "Fri, 25 Sep 2026 14:52:38 GMT", "etag": "\"1867a6a35763151635ef9f08d1a1776b\"", "last-modified": "Fri, 18 Sep 2026 07:45:27 GMT", "pragma": "no-cache", "referrer-policy": "same-origin", "server": "AmazonS3", "strict-transport-security": "max-age=63072000; includeSubDomains; preload", "via": "1.1 ed189a437cfac2413240746357610054.cloudfront.net (CloudFront)", "x-amz-cf-id": "A1SCvmm7yZ62MJSU5fiaZKV6drXfDY_3VqHQ7LGSltWHGuxOb1YF3w==", "x-amz-cf-pop": "NRT20-P6", "x-amz-server-side-encryption": "AES256", "x-amz-version-id": "o1NVGQ.ZSJBrpSARmUdTYl_xQtTc481C", "x-cache": "Hit from cloudfront", "x-content-type-options": "nosniff", "x-frame-options": "DENY", "x-xss-protection": "1; mode=block"}
 set-cookie []
 
 ﻿<!DOCTYPE html>
@@ -29,21 +29,21 @@ set-cookie []
     <form id="formContainer">
         <div id="container">
             <div id="data">
-                <div>
+             <div>
                     <div class="rightfloat">
                         <div class="leftfloat"><label for="strLangauge"><span id="MKAYMA00M003"></span></label></div>
                         <select name="selectLangauge" id="selectLangauge" class=""></select>
                     </div>
                 </div>
                 <div class="block noflex" id="page01"><span id="MKAYMA00M004"></span>
-                    <span id="MKAYMA00M005"></span>
-                    <span id="MKAYMA00M006"></span>
-                    <span id="MKAYMA00M007"></span>
-                    <span id="MKAYMA00M008"></span>
-                    <h4><span id="MKAYMA00M009"></span></h4>
-                    <ul>
-                         <li><span id="MKAYMA00M010"></span></li>
-                    </ul>
+                <span id="MKAYMA00M005"></span>
+                <span id="MKAYMA00M006"></span>
+                <span id="MKAYMA00M007"></span>
+                <span id="MKAYMA00M008"></span>
+<h4><span id="MKAYMA00M009"></span></h4>
+<ul>
+     <li><span id="MKAYMA00M010"></span></li>
+</ul>
                     <span class="">
                         <div class="item">
                             <div id="" class="message noborder middlefont">
@@ -56,6 +56,7 @@ set-cookie []
                         <div class="btnarea"><a id="confirmbtn1" class="nextlongbtn2 disable"><span id="MKAYMA00M012"></span></a></div>
                     </span>
                 </div>
+                
             </div>
         </div>
     </form>
