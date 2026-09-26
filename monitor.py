@@ -460,6 +460,23 @@ if __name__ == "__main__":
         check([a for a in sys.argv[2:] if not a.startswith("--")] or None)
     elif cmd == "explore" and len(sys.argv) > 2:
         explore(sys.argv[2])
+    elif cmd == "relaytest":
+        out = DEBUG / "relaytest.txt"; lines = [f"PROXY_URL={PROXY_URL} token_set={bool(PROXY_TOKEN)}"]
+        try:
+            r = urllib.request.Request(PROXY_URL, headers={"x-proxy-token": PROXY_TOKEN})
+            lines.append("GET: " + urllib.request.urlopen(r, timeout=40).read().decode()[:500])
+        except Exception as e:
+            lines.append(f"GET error: {e} {getattr(e, 'read', lambda: b'')()[:300]}")
+        try:
+            p = json.dumps({"url": "https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index.html?lang=ja", "method": "GET", "headers": {"user-agent": "Mozilla/5.0"}}).encode()
+            r = urllib.request.Request(PROXY_URL, data=p, method="POST", headers={"content-type": "application/json", "x-proxy-token": PROXY_TOKEN})
+            d = json.loads(urllib.request.urlopen(r, timeout=40).read())
+            body = base64.b64decode(d["body_b64"]).decode("utf-8", "replace")
+            lines.append(f"license-test status={d['status']} maintenance={'id=\"maintenance\"' in body} len={len(body)}")
+            lines.append(body[:1500])
+        except Exception as e:
+            lines.append(f"POST error: {e}")
+        out.write_text("\n".join(lines), encoding="utf-8"); print("\n".join(lines))
     elif cmd == "analyze":
         analyze()
     elif cmd == "test-notify":

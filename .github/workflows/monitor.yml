@@ -25,7 +25,7 @@ jobs:
     env:
       TZ: Asia/Tokyo
       NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-      PROXY_URL: ${{ vars.PROXY_URL }}
+      PROXY_URL: https://menkyo-watch-rosy.vercel.app/api/fetch
       PROXY_TOKEN: ${{ secrets.PROXY_TOKEN }}
       MODE: ${{ vars.MODE || 'observe' }}
       JITTER_MAX_SEC: "0"
