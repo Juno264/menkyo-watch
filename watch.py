@@ -52,6 +52,7 @@ API_HEADERS = {"user-agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) A
                "content-type": "application/json; charset=UTF-8",
                "origin": "https://license-test.tokyo-madoguchi-yoyaku.com",
                "referer": "https://license-test.tokyo-madoguchi-yoyaku.com/"}
+WATCH_MONTHS = ["202610", "202611"]                   # 問い合わせる月（9月・12月は見ない）
 NOTIFY_FIRST_N = 5                                     # 残り人数の増加は、早い順この日数までを通知（それより先は記録のみ）
 KINDS = {"both": "免許証及びマイナ免許証の両方", "only": "免許証のみ"}
 JP = {"fuchu": "府中", "samezu": "鮫洲", "koto": "江東", "both": "両方", "only": "免許証のみ"}
@@ -188,10 +189,7 @@ def _slotname(row):
 def api_scan(site, kind):
     """予約画面のカレンダーと同じデータ（calgetres）を月ごとに取得。1か月1回の問い合わせで全日・全時間帯の残りがわかる"""
     today = date.today()
-    months, y, m = [], today.year, today.month
-    for _ in range(MONTHS):
-        months.append(f"{y:04d}{m:02d}")
-        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
+    months = [m for m in WATCH_MONTHS if m >= f"{today:%Y%m}"]
     counts, ages = {}, []
     for ym in months:
         d = _api("GET", "calgetres", {"date": ym, "coursecode": COURSE[kind], "placecode": PLACE[site], "user": "pub"})
