@@ -1,0 +1,3 @@
+status 200 https://license-renew.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index_000.html
+step0 ok {'kind': 'click', 'text': '学科試験の予約はこちら'} -> https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index.html?lang=ja
+final url: https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index.html?lang=ja
