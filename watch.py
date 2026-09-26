@@ -161,6 +161,8 @@ def discord(text):
             urllib.request.urlopen(req, timeout=20).read()
         except Exception as e:
             print("Discord送信失敗:", e)
+            with (DATA / "discord_errors.txt").open("a", encoding="utf-8") as f:
+                f.write(f"{datetime.now():%m/%d %H:%M} {e}\n")
         time.sleep(1)
 
 
@@ -307,6 +309,8 @@ if __name__ == "__main__":
     elif cmd == "report":
         discord(summary())
     elif cmd == "test":
+        (DATA / "discord_test.txt").write_text(f"{datetime.now():%m/%d %H:%M} webhook_set={bool(WEBHOOK)}", encoding="utf-8")
         discord("✅ 本免ウォッチの通知テストです。これが見えていれば設定OK")
+        discord(summary())
     else:
         print(__doc__)
