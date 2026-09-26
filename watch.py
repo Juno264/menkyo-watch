@@ -818,6 +818,24 @@ if __name__ == "__main__":
                     r[s.src] = hits; }
                   return r; }""")
         (DEBUG_DIR / "grepjs.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
+    elif cmd == "compare":
+        # カレンダーのデータ（calgetres）と最新（getres）を全日付で比較（1回限りの調査用）
+        site, kind = sys.argv[2], sys.argv[3]
+        out = {"at": datetime.now().strftime("%H:%M:%S"), "rows": []}
+        for ym in WATCH_MONTHS:
+            d = _api("GET", "calgetres", {"date": ym, "coursecode": COURSE[kind], "placecode": PLACE[site], "user": "pub"})
+            out[f"age_{ym}"] = round(time.time() - float(d["currenttime"]))
+            cal = defaultdict(dict)
+            for row in d["body"]:
+                cal[row["date"]][_slotname(row)] = (int(row["capacity"]), int(row["reservation"]))
+            for ds in sorted(cal):
+                if ds <= datetime.now().strftime("%Y%m%d"):
+                    continue
+                lv = _api("POST", "getres", body={"date": ds, "coursecode": COURSE[kind], "placecode": PLACE[site]})
+                live = {_slotname(r): (int(r["capacity"]), int(r["reservation"])) for r in lv.get("body", [])}
+                out["rows"].append({"date": ds, "cal": cal[ds], "live": live})
+                time.sleep(0.5)
+        (DEBUG_DIR / "compare.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     elif cmd == "testhunt":
         discord("🧪 **本番通知のテスト（実際の空きではありません）**")
         for m in [f"@here ⭐🔥 **【江東】** **キャンセル枠が出ました！** 江東・両方　**{fmt_d('2026-11-19')}**　残り 午前1 / 午後0"] + \
