@@ -570,8 +570,8 @@ if __name__ == "__main__":
                   for (const s of document.querySelectorAll('script[src]')) {
                     const t = await (await fetch(s.src)).text();
                     const hits = []; let i = -1;
-                    while ((i = t.indexOf('calgetres', i + 1)) >= 0 && hits.length < 6) hits.push(t.slice(Math.max(0, i - 400), i + 300));
-                    let j = -1; while ((j = t.indexOf('getres', j + 1)) >= 0 && hits.length < 12) { if (t.slice(j - 3, j) !== 'cal') hits.push('[getres] ' + t.slice(Math.max(0, j - 300), j + 200)); }
+                    for (const kw of ['getReservationTimeListUrl', 'getReservationTimeUrl', 'user=']) {
+                      let i = -1; while ((i = t.indexOf(kw, i + 1)) >= 0 && hits.length < 20) hits.push('[' + kw + '] ' + t.slice(Math.max(0, i - 250), i + 350)); }
                     r[s.src] = hits; }
                   return r; }""")
         (DATA / "grepjs.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
