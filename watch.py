@@ -38,6 +38,7 @@ SLOW = [("fuchu", "only"), ("samezu", "only")]         # 通常：FAST_MIN×SLOW
 FAST_MIN = 3
 SLOW_EVERY = 5                                         # 3分×5＝15分
 COMMIT_EVERY = 5                                       # 保存（git push）は15分ごと
+MAX_CLICKS = 10                                        # 残り0の日が続いても、1回に確認する日数の上限
 DETAIL_DAYS = 3                                      # 早い順に何日分、残り人数を読むか
 MONTHS = 4
 
@@ -139,14 +140,23 @@ def scan_one(browser, site, kind):
         for s in steps_for(site, kind):
             _click_text(page, s["text"])
             page.wait_for_load_state("domcontentloaded")
-        dates = read_dates(page)
-        counts = {}
-        for d in dates[:DETAIL_DAYS]:
+        selectable = read_dates(page)
+        # 選べる日でも「従来の免許証」の残りが0名の日がある（別の枠の空きで選べる状態）→ 人数を見て判定
+        counts, zero, found = {}, [], 0
+        for d in selectable[:MAX_CLICKS]:
             try:
-                counts[d] = read_counts(page, d)
+                c = read_counts(page, d)
             except Exception as e:
                 counts[d] = {"error": str(e)[:80]}
-        return {"dates": dates, "counts": counts}
+                continue
+            if sum(v for v in c.values() if isinstance(v, int)) > 0:
+                counts[d] = c; found += 1
+                if found >= DETAIL_DAYS:
+                    break
+            else:
+                zero.append(d)
+        dates = [d for d in selectable if d not in zero]
+        return {"dates": dates, "counts": counts, "zero": zero}
     finally:
         page.context.close()
 

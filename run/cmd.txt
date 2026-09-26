@@ -1,2 +1,2 @@
-watch debugdate fuchu only 2026-11-06
-# 1790427307191823980
+watch run
+# 1790427392666128884
