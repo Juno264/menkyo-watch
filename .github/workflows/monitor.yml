@@ -48,6 +48,7 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ]; then CMD="$(head -1 run/cmd.txt)";
           else CMD="${{ github.event.inputs.cmd || 'check' }}"; fi
           echo "cmd: $CMD"
+          case "$CMD" in direct:*) export NO_RELAY=1; CMD="${CMD#direct:}";; esac
           python monitor.py $CMD
       - name: Save data
         if: always()

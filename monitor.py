@@ -138,9 +138,13 @@ def _relay(route):
     route.abort()
 
 
+UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36")
+
+
 def new_page(browser, **kw):
-    ctx = browser.new_context(locale="ja-JP", **kw)
-    if PROXY_URL:
+    ctx = browser.new_context(locale="ja-JP", timezone_id="Asia/Tokyo", user_agent=UA, **kw)
+    if PROXY_URL and os.environ.get("NO_RELAY") != "1":
         ctx.route(PROXY_PATTERN, _relay)
     return ctx.new_page()
 
