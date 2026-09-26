@@ -1,0 +1,597 @@
+[
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "学科試験",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "typeChoice",
+  "text": "1",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "予約状況確認/キャンセル",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "typeChoice",
+  "text": "4",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "空き状況カレンダー",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "typeChoice",
+  "text": "31",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "tel",
+  "name": "strYoyakuNo01",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "tel",
+  "name": "strYoyakuNo02",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "tel",
+  "name": "strYoyakuNo03",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "tel",
+  "name": "strYoyakuNo04",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "hidden",
+  "name": "strYoyakuNo",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "hidden",
+  "name": "strYoyakuNoCheck",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "tel",
+  "name": "strTypeDetailNum",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "typeDetailChoice",
+  "text": "21",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "hidden",
+  "name": "strAddressCode",
+  "text": "999",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "【卒業証明書をお持ちの方】【検査合格証明書をお持ちの方】※江東試験場では、取得時講習を終了又は免除されている方のみ受験できます。 教習所卒業等",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "typeDetailChoice",
+  "text": "11",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "【原付免許を受験される方】江東試験場では受験できません。 原付",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "typeDetailChoice",
+  "text": "13",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "【小型特殊免許を受験される方】 小特",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "typeDetailChoice",
+  "text": "14",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "【上記３項目以外を受験される方】江東試験場では受験できません。 その他",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "typeDetailChoice",
+  "text": "12",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "typeDetailChoice",
+  "text": "1",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "typeDetailChoice",
+  "text": "2",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "typeDetailChoice",
+  "text": "3",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "typeDetailChoice",
+  "text": "4",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "newLicenseChoice",
+  "text": "0",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "免許証のみ",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "newLicenseChoice",
+  "text": "1",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "マイナ免許証のみ",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "newLicenseChoice",
+  "text": "2",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "免許証及びマイナ免許証の両方",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "radio",
+  "name": "newLicenseChoice",
+  "text": "3",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "※ 免許証とは、従来の免許証をいいます。※ マイナ免許証とは、免許情報が記録されたマイナンバーカード（免許情報記録個人番号カード）のことをいいます。※ 受付時間",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "button",
+  "name": "backPageBtn02",
+  "text": "＜戻る",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "button",
+  "name": "nextPageBtn02",
+  "text": "進む＞",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "氏名（カナ又はアルファベット）",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "【例】 メンキョハナコ【例】 ＭＥＮＫＹＯＨＡＮＡＫＯ",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "text",
+  "name": "strNameKana",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "生年月日",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "【例】 1983-8-1（年-月-日）",
+  "href": ""
+ },
+ {
+  "tag": "SELECT",
+  "type": "select-one",
+  "name": "birthYear",
+  "text": "19061907190819091910191119121913191419151916191719181919192019211922192319241925",
+  "href": ""
+ },
+ {
+  "tag": "SELECT",
+  "type": "select-one",
+  "name": "birthMonth",
+  "text": "---123456789101112",
+  "href": ""
+ },
+ {
+  "tag": "SELECT",
+  "type": "select-one",
+  "name": "birthDay",
+  "text": "---12345678910111213141516171819202122232425262728293031",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "tel",
+  "name": "strLicenseNumber",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "卒業証明書等の番号",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "【例】１２３４５６７８９０",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "text",
+  "name": "strGraduationCertificateNumber",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "連絡先電話番号（要市外局番/携帯番号可）",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "【例】01234567891",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "tel",
+  "name": "strTelNumber",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "マイナンバーカード有効期限",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "【例】 2029-8-1（年-月-日）有効期限が切れていると手続きできません。",
+  "href": ""
+ },
+ {
+  "tag": "SELECT",
+  "type": "select-one",
+  "name": "mainaCardExpYear",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "SELECT",
+  "type": "select-one",
+  "name": "mainaCardExpMonth",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "SELECT",
+  "type": "select-one",
+  "name": "mainaCardExpDay",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "button",
+  "name": "backPageBtn03",
+  "text": "＜戻る",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "button",
+  "name": "nextPageBtn03",
+  "text": "進む＞",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "button",
+  "name": "gotoTop",
+  "text": "トップページへ戻る",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "button",
+  "name": "backPageBtn04-err",
+  "text": "＜戻る",
+  "href": ""
+ },
+ {
+  "tag": "SELECT",
+  "type": "select-one",
+  "name": "placeChoiceDetail",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "button",
+  "name": "backPageBtn04",
+  "text": "＜戻る",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "button",
+  "name": "nextPageBtn04",
+  "text": "進む＞",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "hidden",
+  "name": "strChoiceDetail",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "hidden",
+  "name": "strVisitTime",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "text",
+  "name": "visitDate",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "LABEL",
+  "type": "",
+  "name": "",
+  "text": "",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "button",
+  "name": "backPageBtn05",
+  "text": "＜戻る",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "button",
+  "name": "nextPageBtn05",
+  "text": "進む＞",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "button",
+  "name": "senddata",
+  "text": "予約を確定する",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "button",
+  "name": "backPageBtn06",
+  "text": "＜戻る",
+  "href": ""
+ },
+ {
+  "tag": "INPUT",
+  "type": "button",
+  "name": "backPageBtn07",
+  "text": "＜戻る",
+  "href": ""
+ },
+ {
+  "tag": "A",
+  "type": "",
+  "name": "",
+  "text": "Apple社",
+  "href": "https://support.apple.com/ja-jp/HT200289"
+ },
+ {
+  "tag": "A",
+  "type": "",
+  "name": "",
+  "text": "Google社",
+  "href": "https://support.google.com/android/answer/9075928?hl=ja"
+ }
+]

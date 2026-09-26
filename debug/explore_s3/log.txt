@@ -1,0 +1,5 @@
+status 200 https://license-renew.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index_000.html
+step0 ok {'kind': 'click', 'text': '学科試験の予約はこちら'} -> https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index.html?lang=ja
+step1 ok {'kind': 'click', 'text': '「利用規約について」を読み、同意しました。'} -> https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index.html?lang=ja
+step2 ok {'kind': 'click', 'text': '手続を開始する'} -> https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/01/html/main.html?lang=ja
+final url: https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/01/html/main.html?lang=ja
