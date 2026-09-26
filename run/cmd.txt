@@ -1,2 +1,2 @@
-direct:explore koto
-# 1790418449036368939
+direct:scan --detail
+# 1790418585635020570

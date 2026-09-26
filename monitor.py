@@ -357,6 +357,86 @@ def explore(name):
     print("\n".join(log)); print(f"保存: {out}")
 
 
+CAL_JS = """() => {
+  const title = document.querySelector('.ui-datepicker-title');
+  const y = +document.querySelector('.ui-datepicker-year')?.innerText || null;
+  const cells = [...document.querySelectorAll('table.ui-datepicker-calendar td')]
+    .filter(td => !td.classList.contains('ui-datepicker-other-month'))
+    .map(td => ({ d: td.innerText.trim(), ok: !td.classList.contains('ui-datepicker-unselectable'),
+                  title: td.getAttribute('title') || '', cls: td.className }));
+  const next = document.querySelector('.ui-datepicker-next');
+  return { title: title ? title.innerText.trim() : '', cells,
+           nextDisabled: !next || next.classList.contains('ui-state-disabled') };
+}"""
+
+
+def read_calendar(page, months=4, detail=False, dump_dir=None):
+    """カレンダーを月送りしながら、選べる（空きのある）日付を集める"""
+    avail = []
+    for i in range(months):
+        page.wait_for_selector("table.ui-datepicker-calendar", timeout=15000)
+        cal = page.evaluate(CAL_JS)
+        m = re.search(r"(\d{4})年\s*(\d{1,2})月", cal["title"])
+        if not m:
+            raise RuntimeError(f"カレンダーの年月が読めない: {cal['title']!r}")
+        y, mo = int(m.group(1)), int(m.group(2))
+        for c in cal["cells"]:
+            if c["ok"] and c["d"].isdigit():
+                avail.append({"date": f"{y:04d}-{mo:02d}-{int(c['d']):02d}", "title": c["title"]})
+        if dump_dir and i == 0:
+            pass
+        if cal["nextDisabled"]:
+            break
+        page.locator(".ui-datepicker-next").first.click()
+        time.sleep(0.8)
+    if detail and avail and dump_dir:
+        # 最初の空き日をクリックして、時間帯の表示を保存（構造調査用）
+        first = avail[0]["date"]
+        # 先頭の月へ戻す
+        for _ in range(months):
+            if page.locator(".ui-datepicker-prev.ui-state-disabled").count():
+                break
+            page.locator(".ui-datepicker-prev").first.click(); time.sleep(0.5)
+        y, mo, d = map(int, first.split("-"))
+        for _ in range(months):
+            cal = page.evaluate(CAL_JS)
+            if f"{y}年" in cal["title"] and re.search(rf"\b{mo}月", cal["title"]):
+                break
+            page.locator(".ui-datepicker-next").first.click(); time.sleep(0.5)
+        page.locator("table.ui-datepicker-calendar td:not(.ui-datepicker-unselectable):not(.ui-datepicker-other-month) a", has_text=re.compile(rf"^{d}$")).first.click()
+        settle(page); time.sleep(2)
+        (dump_dir / "detail.html").write_text(page.content(), encoding="utf-8")
+        (dump_dir / "detail.txt").write_text(page.inner_text("body"), encoding="utf-8")
+        page.screenshot(path=str(dump_dir / "detail.png"), full_page=True)
+    return avail
+
+
+def scan(names=None, detail=False):
+    """全試験場の空き日を読み取り、scan.json に保存して表示"""
+    names = names or ["fuchu", "samezu", "koto"]
+    result = {"at": datetime.now().strftime("%Y-%m-%d %H:%M"), "sites": {}}
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(headless=True)
+        for n in names:
+            steps = json.loads((PROFILES / f"{n}.json").read_text(encoding="utf-8"))
+            page = new_page(browser, viewport={"width": 1280, "height": 900})
+            dd = DEBUG / f"scan_{n}"; dd.mkdir(parents=True, exist_ok=True)
+            try:
+                page.goto(START_URL, timeout=45000); settle(page)
+                for s_ in steps:
+                    do_step(page, s_); settle(page)
+                result["sites"][n] = read_calendar(page, detail=detail, dump_dir=dd)
+            except Exception as e:
+                result["sites"][n] = {"error": f"{e.__class__.__name__}: {str(e)[:200]}"}
+                page.screenshot(path=str(dd / "error.png"), full_page=True)
+            page.context.close()
+            time.sleep(3)
+        browser.close()
+    (BASE / "scan.json").write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(json.dumps(result, ensure_ascii=False, indent=1))
+    return result
+
+
 OPEN_MARKS = ("○", "◯", "〇", "◎", "△", "空き", "空有", "残")
 CLOSE_MARKS = ("×", "✕", "満", "受付終了", "締切", "－", "-")
 DATE_RE = re.compile(r"(?:(\d{1,2})月(\d{1,2})日)|(?<![\d/])(\d{1,2})/(\d{1,2})(?![\d/])")
@@ -497,6 +577,8 @@ if __name__ == "__main__":
                 txt = f"URL {url}\nERROR {e}"
             (DEBUG / f"relayget_{i}.txt").write_text(txt, encoding="utf-8")
             print(txt[:300])
+    elif cmd == "scan":
+        scan([a for a in sys.argv[2:] if not a.startswith("--")] or None, detail="--detail" in sys.argv)
     elif cmd == "analyze":
         analyze()
     elif cmd == "test-notify":
