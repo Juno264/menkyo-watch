@@ -189,6 +189,7 @@ def run():
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     prev_all = json.loads(LATEST.read_text(encoding="utf-8")) if LATEST.exists() else {}
     cur_all, scan_rows, ev_rows, alerts = {}, [], [], []
+    base = baseline()
     with sync_playwright() as pw:
         browser = pw.chromium.launch(headless=True)
         for site in SITES:
@@ -206,9 +207,19 @@ def run():
                         for e in diff(prev, cur, now):
                             ev_rows.append([e[0], site, kind] + e[1:])
                             if e[1] == "date_open" and e[6] == "earlier":
-                                alerts.append(f"🟢 **{JP[site]}・{JP[kind]}** で **{fmt_d(e[2])}** が選べるようになりました"
-                                              f"（これまでの最短 {fmt_d(prev['dates'][0])}）"
-                                              + (f" 残り 午前{cur['counts'].get(e[2], {}).get('午前', '?')}/午後{cur['counts'].get(e[2], {}).get('午後', '?')}" if e[2] in cur["counts"] else ""))
+                                b = base.get(key)
+                                cc = cur["counts"].get(e[2])
+                                msg = (f"**{JP[site]}・{JP[kind]}** で **{fmt_d(e[2])}** が選べるようになりました"
+                                       f"（直前の最短 {fmt_d(prev['dates'][0])}"
+                                       + (f"、記録開始時 {fmt_d(b)}" if b else "") + "）"
+                                       + (f"　残り {_slot(cc)}" if cc else ""))
+                                if site == FAV:
+                                    msg = "⭐🔥 **【江東】** " + msg
+                                elif b and e[2] < b:
+                                    msg = "🔥 " + msg
+                                else:
+                                    msg = "🟢 " + msg
+                                alerts.append((site != FAV, msg))
                     cur_all[key] = cur
                 except Exception as e:
                     scan_rows.append([now, site, kind, "error", "", "", "", "", round(time.time() - t0, 1)])
@@ -229,7 +240,7 @@ def run():
     if alerts:
         head = "@here " if MODE == "hunt" else ""
         tail = "\n今すぐ予約サイトへ！" if MODE == "hunt" else "\n（調査期間中：記録のみ）"
-        discord(head + "\n".join(alerts) + tail)
+        discord(head + "\n".join(m for _, m in sorted(alerts, key=lambda a: a[0])) + tail)
     maybe_summary()
 
 
@@ -258,48 +269,92 @@ def _rows(path):
     return list(csv.DictReader(path.open(encoding="utf-8"))) if path.exists() else []
 
 
+FAV = "koto"   # 第一希望の試験場（レポートの一番上に強調表示）
+ORDER = ["koto", "fuchu", "samezu"]
+
+
+def baseline():
+    """記録開始時（最初に成功したスキャン）の最短日。これより早い日＝キャンセル等で前進した枠"""
+    base = {}
+    for r in _rows(SCANS):
+        k = f"{r['site']}_{r['kind']}"
+        if k not in base and r["result"] == "ok" and r["earliest"]:
+            base[k] = r["earliest"]
+    return base
+
+
+def _slot(c):
+    return f"午前{c.get('午前', '?')} / 午後{c.get('午後', '?')}"
+
+
 def summary(hours=None):
     latest = json.loads(LATEST.read_text(encoding="utf-8")) if LATEST.exists() else {}
     scans, events = _rows(SCANS), _rows(EVENTS)
+    base = baseline()
     since = datetime.now() - timedelta(hours=hours) if hours else None
     if since:
         events = [e for e in events if datetime.fromisoformat(e["time"]) >= since]
-    L = [f"📋 **本免 学科試験 空き状況レポート**（{datetime.now():%m/%d %H:%M}）"]
-    L.append("```")
-    L.append(f"{'':8}{'免許証のみ':<14}{'両方':<14}")
-    for site in SITES:
+    L = [f"📋 **本免 学科試験 空き状況**（{datetime.now():%m/%d %H:%M}）", ""]
+
+    # --- 第一希望：江東 ---
+    L.append(f"⭐ **{JP[FAV]}試験場（第一希望）**")
+    for kind in ["only", "both"]:
+        k = f"{FAV}_{kind}"; s = latest.get(k, {})
+        if not s.get("dates"):
+            L.append(f"> {JP[kind]}：{'空きなし' if 'dates' in s else '取得失敗'}")
+            continue
+        f = s["dates"][0]; c = s.get("counts", {}).get(f, {})
+        b = base.get(k)
+        if b and f < b:
+            gain = (date.fromisoformat(b) - date.fromisoformat(f)).days
+            L.append(f"> 🔥 {JP[kind]}：**{fmt_d(f)}**　{_slot(c)}　← **記録開始時（{fmt_d(b)}）より{gain}日早い！**")
+        else:
+            L.append(f"> {JP[kind]}：**{fmt_d(f)}**　{_slot(c)}")
+        nxt = [f"{fmt_d(d)} {c2.get('午前', '?')}/{c2.get('午後', '?')}" for d, c2 in list(s.get("counts", {}).items())[1:]]
+        if nxt:
+            L.append(f">  　次点：" + "、".join(nxt))
+    L.append("")
+
+    # --- その他の試験場 ---
+    L.append("**その他の試験場**（最短日　午前/午後の残り）")
+    for site in ORDER[1:]:
         cells = []
         for kind in ["only", "both"]:
-            s = latest.get(f"{site}_{kind}", {})
+            k = f"{site}_{kind}"; s = latest.get(k, {})
             if s.get("dates"):
                 f = s["dates"][0]; c = s.get("counts", {}).get(f, {})
-                cells.append(f"{fmt_d(f)} {c.get('午前', '?')}/{c.get('午後', '?')}")
+                mark = "🔥" if base.get(k) and f < base[k] else ""
+                txt = f"{mark}{fmt_d(f)} {c.get('午前', '?')}/{c.get('午後', '?')}"
+                cells.append(f"{JP[kind]} **{txt}**" if mark else f"{JP[kind]} {txt}")
             else:
-                cells.append("空きなし" if "dates" in s else "取得失敗")
-        L.append(f"{JP[site]:<6}" + "".join(f"{x:<16}" for x in cells))
-    L.append("（最短日 午前残り/午後残り）")
-    L.append("```")
+                cells.append(f"{JP[kind]} {'空きなし' if 'dates' in s else '取得失敗'}")
+        L.append(f"・{JP[site]}　" + "　｜　".join(cells))
 
-    n_scan = len({r["time"] for r in scans})
-    ok = sum(r["result"] == "ok" for r in scans)
-    L.append(f"スキャン {n_scan}回（成功 {ok}/{len(scans)}）　記録開始 {scans[0]['time'] if scans else '-'}")
-
+    # --- 早い日程（キャンセル等で出た枠） ---
     opens = [e for e in events if e["event"] == "date_open"]
-    early = [e for e in opens if e["note"] == "earlier"]
+    early = [e for e in opens if base.get(f"{e['site']}_{e['kind']}") and e["date"] < base[f"{e['site']}_{e['kind']}"]]
+    early.sort(key=lambda e: (e["site"] != FAV, e["time"]))
+    span = f"直近{hours}時間" if hours else "記録開始から"
+    L.append("")
+    if early:
+        L.append(f"🔥 **{span}、記録開始時より早い日程が出た回数：{len(early)}回**")
+        for e in early[:10]:
+            star = "⭐" if e["site"] == FAV else "　"
+            L.append(f"{star}{e['time'][5:]}　{JP[e['site']]}・{JP[e['kind']]} → **{fmt_d(e['date'])}**")
+    else:
+        L.append(f"{span}、記録開始時より早い日程はまだ出ていません")
+
+    # --- 統計 ---
     ups = [e for e in events if e["event"] == "count_up"]
     cancels = sum(int(e["new"]) - int(e["old"]) for e in ups)
-    span = f"直近{hours}時間" if hours else "全期間"
-    L.append(f"\n**{span}のキャンセル関連**")
-    L.append(f"・埋まっていた日が選べるようになった: {len(opens)}回（うち最短日より前: {len(early)}回）")
-    L.append(f"・残り人数が増えた（≒キャンセル）: {len(ups)}回 / 計{cancels}名分")
-    if early:
-        L.append("・最短日より前に出た枠:")
-        for e in early[-8:]:
-            L.append(f"   {e['time'][5:]} {JP[e['site']]}・{JP[e['kind']]} → {fmt_d(e['date'])}")
+    n_scan = len({r["time"] for r in scans}); ok = sum(r["result"] == "ok" for r in scans)
+    L.append("")
+    L.append(f"📊 キャンセルの動き：満席の日が空いた {len(opens)}回　／　残り人数が増えた {len(ups)}回（計{cancels}名分）")
     hrs = Counter(datetime.fromisoformat(e["time"]).hour for e in opens + ups)
     if hrs:
-        L.append("・時間帯別（回数）: " + "  ".join(f"{h}時:{n}" for h, n in sorted(hrs.items())))
-    L.append("\n" + ("🎯 本番モード" if MODE == "hunt" else "🔍 調査モード（10/2まで記録のみ）"))
+        L.append("　時間帯別：" + "  ".join(f"{h}時:{n}" for h, n in sorted(hrs.items())))
+    L.append(f"　スキャン {n_scan}回（成功 {ok}/{len(scans)}）・記録開始 {scans[0]['time'][5:] if scans else '-'}")
+    L.append("🎯 本番モード" if MODE == "hunt" else "🔍 調査モード（10/2まで記録のみ）")
     return "\n".join(L)
 
 
@@ -316,7 +371,20 @@ def commit_push():
         time.sleep(5)
 
 
+_CODE_HASH = None
+
+
+def _code_changed():
+    import hashlib
+    global _CODE_HASH
+    h = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    if _CODE_HASH is None:
+        _CODE_HASH = h
+    return h != _CODE_HASH
+
+
 def loop(hours=5.6, interval_min=15):
+    _code_changed()
     """interval_minごとにスキャン→保存をくり返す（GitHubの1ジョブ上限6時間の内側で止める）"""
     end = time.time() + hours * 3600
     n = 0
@@ -329,6 +397,10 @@ def loop(hours=5.6, interval_min=15):
             _notify_error_once(f"スキャン処理でエラー: {e.__class__.__name__}")
         commit_push()
         n += 1
+        if _code_changed():
+            left = (end - time.time()) / 3600
+            print("watch.py が更新されたので再起動")
+            os.execv(sys.executable, [sys.executable, __file__, "loop", f"{left:.3f}"])
         wait = interval_min * 60 - (time.time() - t0)
         if time.time() + wait >= end:
             break
@@ -341,7 +413,7 @@ if __name__ == "__main__":
     if cmd == "run":
         run()
     elif cmd == "loop":
-        loop()
+        loop(float(sys.argv[2]) if len(sys.argv) > 2 else 5.6)
     elif cmd == "report":
         discord(summary())
     elif cmd == "test":

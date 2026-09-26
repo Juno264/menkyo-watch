@@ -15,6 +15,7 @@ concurrency:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   run:
@@ -25,6 +26,7 @@ jobs:
       NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
       DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
       MODE: ${{ vars.MODE || 'observe' }}
+      GH_TOKEN: ${{ github.token }}
       JITTER_MAX_SEC: "0"
     steps:
       - uses: actions/checkout@v4
@@ -49,6 +51,9 @@ jobs:
           CMD="${CMD#direct:}"
           echo "cmd: $CMD"
           case "$CMD" in
+            restart-loop)
+              for id in $(gh run list --workflow loop.yml --json databaseId,status -q '.[] | select(.status=="in_progress" or .status=="queued") | .databaseId'); do gh run cancel $id || true; done
+              sleep 20; gh workflow run loop.yml --ref main ;;
             watch\ *) python watch.py ${CMD#watch } ;;
             *) python monitor.py $CMD ;;
           esac
