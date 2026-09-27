@@ -370,11 +370,12 @@ def run(targets=None):
                             ev_rows.append([e[0], site, kind] + e[1:])
                             _, typ, d, slot, old, new, _ = e
                             # キャンセル＝残り人数の増加、または満席だった日に空き（90日先の新規公開日は除く）
-                            front = cur["dates"][:NOTIFY_FIRST_N]
-                            if typ == "count_up" and (int(old) == 0 or d in front):
-                                cancels.append((site, kind, d, cur["counts"].get(d), f"{slot} {old}→{new}名"))
-                            elif typ == "date_open" and last_prev and d < last_prev:
-                                cancels.append((site, kind, d, cur["counts"].get(d), "満席だった日に空き"))
+                            # 通知するのは「直前の最短日より手前」に空きが出たときだけ（それ以外は記録のみ）
+                            prev_first = prev["dates"][0] if prev["dates"] else None
+                            if typ in ("date_open", "count_up") and prev_first and d < prev_first \
+                                    and not any(c[0] == site and c[2] == d for c in cancels):
+                                cancels.append((site, kind, d, cur["counts"].get(d),
+                                                f"最短日（{fmt_d(prev_first)}）より手前に空き"))
                     cur_all[key] = cur
                 except Exception as e:
                     scan_rows.append([now, site, kind, "error", "", "", "", "", round(time.time() - t0, 1)])
