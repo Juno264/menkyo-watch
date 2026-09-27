@@ -400,7 +400,7 @@ def run(targets=None):
 
 def notify_cancels(cancels, base):
     cancels.sort(key=lambda c: (c[0] != FAV, c[2]))          # 江東を先頭、次に早い日
-    lines = []
+    lines, ok_cancels = [], []
     for site, kind, d, counts, what in cancels[:8]:
         live = live_counts(site, kind, d)
         det_id = f"{datetime.now():%m%d%H%M%S}_{site}_{d}"
@@ -409,17 +409,22 @@ def notify_cancels(cancels, base):
         for off in LIVE_FOLLOWUPS:
             _PENDING.append((t0 + off, det_id, site, kind, d, off))
         if live is not None:
+            if sum(live.values()) == 0:
+                continue      # カレンダーに一瞬写っただけで予約できない枠 → 通知しない（live.csv には記録済み）
             counts = live
-            what += "（最新確認済）" if sum(live.values()) > 0 else "（※最新では既に0名）"
+            what += "（最新確認済）"
         b = base.get(f"{site}_{kind}")
         early = " 🔥**記録開始時より早い**" if b and d < b else ""
         tag = "⭐ **【江東】**" if site == FAV else f"**{JP[site]}**"
         lines.append(f"{tag} **{fmt_d(d)}**　{what}" + (f"（残り {_slot(counts)}）" if counts else "") + early)
+        ok_cancels.append((site, kind, d, counts, what))
+    if not lines:
+        return
     if MODE != "hunt":
         discord("🟡 **キャンセルを検知しました**（調査期間中・予約はまだできません）\n" + "\n".join(lines))
         return
     # 本番：即時通知＋予約リンクと入力情報（今の予約日 MY_DATE より早いものがあればそれを案内）
-    target = [c for c in cancels if not MY_DATE or c[2] < MY_DATE]
+    target = [c for c in ok_cancels if not MY_DATE or c[2] < MY_DATE]
     discord(("@here " if target else "") + "🚨 **キャンセル枠が出ました！**\n" + "\n".join(lines)
             + ("" if target else f"\n（今の予約日 {fmt_d(MY_DATE)} より早い枠ではないため、予約案内は省略）"))
     if target:
