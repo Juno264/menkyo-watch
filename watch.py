@@ -35,8 +35,9 @@ BOOKING_INFO = os.environ.get("BOOKING_INFO", "")   # 予約入力用の個人�
 MY_DATE = os.environ.get("MY_DATE", "")             # 今持っている予約の日付（例 2026-12-10）。これより早い空きだけ通知
 BOOK_URL = "https://license-test.tokyo-madoguchi-yoyaku.com/police-pref-tokyo/index.html?lang=ja"
 SUMMARY_HOURS = {8, 20}                              # この時刻台の最初の実行でまとめを送る
-FAST = [("koto", "only")]                              # 優先：短い間隔でスキャン
-SLOW = [("fuchu", "only"), ("samezu", "only")]         # 通常：FAST_MIN×SLOW_EVERY 分ごと
+# 調査目標「予約できる手前のキャンセルの頻度」を正しく測るため、3試験場ともデータ更新の直後に確認する
+FAST = [("koto", "only"), ("fuchu", "only"), ("samezu", "only")]
+SLOW = []
 FAST_SEC = 60                                          # 江東の通常の確認間隔
 PEAK_SEC = 30                                          # キャンセルが多い時間帯の確認間隔
 DEFAULT_PEAK_HOURS = {6, 7, 8, 18, 19, 20, 21, 22, 23} # データが貯まるまでの仮のピーク時間帯
@@ -204,7 +205,8 @@ def api_scan(site, kind):
     today = date.today()
     months = [m for m in WATCH_MONTHS if m >= f"{today:%Y%m}"]
     counts, ages, cts = {}, [], {}
-    due = _DUE.pop((site, kind), None)          # 更新予定の月だけ問い合わせる（他の月は前回の結果を使う）
+    due = None                                  # 毎回2か月とも問い合わせる（更新のずれに確実に追従するため）
+    fresh = False
     for ym in months:
         cached = _MONTH_CACHE.get((site, kind, ym))
         if due is not None and ym not in due and cached:
@@ -212,6 +214,7 @@ def api_scan(site, kind):
         else:
             d = _api("GET", "calgetres", {"date": ym, "coursecode": COURSE[kind], "placecode": PLACE[site], "user": "pub"})
             _MONTH_CACHE[(site, kind, ym)] = d
+            fresh = True
         ct = float(d.get("currenttime", time.time()))
         cts[ym] = ct
         ages.append(round(time.time() - ct))
@@ -222,7 +225,7 @@ def api_scan(site, kind):
             left = max(0, int(row["capacity"]) - int(row["reservation"]))
             counts.setdefault(ds, {})[_slotname(row)] = left
     dates = sorted(d for d, c in counts.items() if sum(c.values()) > 0)
-    return {"dates": dates, "counts": {d: counts[d] for d in dates}, "cache_age": max(ages) if ages else None, "cts": cts}
+    return {"dates": dates, "counts": {d: counts[d] for d in dates}, "cache_age": max(ages) if ages else None, "cts": cts, "fresh": fresh}
 
 
 def live_counts(site, kind, d):
@@ -238,8 +241,14 @@ def live_counts(site, kind, d):
 
 
 LIVE_LOG = DATA / "live.csv"
-LIVE_FOLLOWUPS = [30, 60, 120, 300]    # 検知後、何秒後に最新の残り人数を再確認するか
-_PENDING = []                          # (実行時刻, 検知ID, site, kind, date, 検知からの秒数)
+EARLY_LOG = DATA / "early.csv"          # 手前の枠の記録（調査の主目的）
+TRACK_STEP_SEC = 10                    # 取れる手前の枠は、埋まるまで10秒ごとに追跡
+TRACK_MAX_SEC = 600                    # 最長10分
+PHANTOM_CHECKS = [30, 60]              # 検知時0名だった枠は、念のため30秒後・60秒後にも確認
+_PENDING = []                          # (実行時刻, 検知ID, 検知からの秒数)
+_TRACK = {}                            # 検知ID -> 追跡中の情報
+EARLY_HEADER = ["detect_id", "detect_time", "site", "kind", "date", "prev_first", "days_earlier",
+                "bookable", "seats_at_detect", "max_seats", "bookable_sec", "end"]
 
 
 def log_live(det_id, site, kind, d, offset, counts, ct_age=None):
@@ -249,13 +258,60 @@ def log_live(det_id, site, kind, d, offset, counts, ct_age=None):
              (counts or {}).get("午前", ""), (counts or {}).get("午後", ""), total, ct_age if ct_age is not None else ""]])
 
 
+def start_track(site, kind, d, prev_first, live):
+    """手前の枠を検知したときに呼ぶ。取れる枠なら埋まるまで追跡、0名なら30秒・60秒後に再確認"""
+    det_id = f"{datetime.now():%m%d%H%M%S}_{site}_{d}"
+    total = sum(live.values()) if live else 0
+    log_live(det_id, site, kind, d, 0, live)
+    t0 = time.time()
+    _TRACK[det_id] = {"t0": t0, "site": site, "kind": kind, "date": d, "prev_first": prev_first,
+                      "detect_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                      "bookable": total > 0, "seats0": total, "max": total, "last_ok": 0 if total > 0 else None}
+    if total > 0:
+        _PENDING.append((t0 + TRACK_STEP_SEC, det_id, TRACK_STEP_SEC))
+    else:
+        for off in PHANTOM_CHECKS:
+            _PENDING.append((t0 + off, det_id, off))
+    return det_id
+
+
+def _finish(det_id, end):
+    t = _TRACK.pop(det_id, None)
+    if not t:
+        return
+    days = (date.fromisoformat(t["prev_first"]) - date.fromisoformat(t["date"])).days if t["prev_first"] else ""
+    append(EARLY_LOG, EARLY_HEADER, [[det_id, t["detect_time"], t["site"], t["kind"], t["date"], t["prev_first"], days,
+                                      int(t["bookable"]), t["seats0"], t["max"],
+                                      t["last_ok"] if t["bookable"] else "", end]])
+
+
 def run_pending():
     now = time.time()
-    due = [p for p in _PENDING if p[0] <= now]
-    for p in due:
+    for p in sorted([p for p in _PENDING if p[0] <= now]):
         _PENDING.remove(p)
-        _, det_id, site, kind, d, off = p
-        log_live(det_id, site, kind, d, off, live_counts(site, kind, d))
+        _, det_id, off = p
+        t = _TRACK.get(det_id)
+        if not t:
+            continue
+        live = live_counts(t["site"], t["kind"], t["date"])
+        log_live(det_id, t["site"], t["kind"], t["date"], off, live)
+        total = sum(live.values()) if live is not None else None
+        if t["bookable"]:
+            if total:                         # まだ取れる
+                t["last_ok"] = off; t["max"] = max(t["max"], total)
+                if off + TRACK_STEP_SEC <= TRACK_MAX_SEC:
+                    _PENDING.append((t["t0"] + off + TRACK_STEP_SEC, det_id, off + TRACK_STEP_SEC))
+                else:
+                    _finish(det_id, "timeout")
+            elif total == 0:                  # 埋まった
+                _finish(det_id, "gone")
+            else:                             # 通信エラー → 次で再確認
+                _PENDING.append((t["t0"] + off + TRACK_STEP_SEC, det_id, off + TRACK_STEP_SEC))
+        else:
+            if total:
+                t["reappeared"] = off; t["max"] = max(t["max"], total)
+            if off >= PHANTOM_CHECKS[-1]:
+                _finish(det_id, "phantom" if not t.get("reappeared") else f"reappeared@{t['reappeared']}")
     return min((p[0] for p in _PENDING), default=None)
 
 
@@ -345,6 +401,19 @@ def diff(prev, cur, now):
     return ev
 
 
+def recent_phantoms(site, minutes=15):
+    """直近に「一瞬写っただけ」と判定した日（再起動直後でも最短日の計算から外すため）"""
+    lim = (datetime.now() - timedelta(minutes=minutes)).strftime("%Y-%m-%d %H:%M:%S")
+    return {r["date"] for r in _rows(EARLY_LOG) if r["site"] == site and r["bookable"] == "0" and r["detect_time"] >= lim} \
+        | {t["date"] for t in _TRACK.values() if t["site"] == site and not t["bookable"]}
+
+
+def bookable_first(entry):
+    """予約できる最短日（一瞬写っただけの日は除く）"""
+    ph = set(entry.get("phantom", []))
+    return next((d for d in entry.get("dates", []) if d not in ph), None)
+
+
 def run(targets=None):
     targets = targets or FAST + SLOW
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -359,23 +428,38 @@ def run(targets=None):
                 t0 = time.time()
                 try:
                     cur = api_scan(site, kind)
-                    first = cur["dates"][0] if cur["dates"] else ""
+                    if not cur.pop("fresh", True):
+                        cur_all[key] = dict(prev_all.get(key, {}), **{k: v for k, v in cur.items() if k == "cts"}) if prev_all.get(key) else cur
+                        continue          # 問い合わせなし（前回と同じデータ）→ 比較も記録もしない
+                    prev = prev_all.get(key)
+                    # 一瞬写っただけ（最新では0名）の日は、カレンダーに残っている間「phantom」として最短日の計算から外す
+                    cur["phantom"] = [d for d in set((prev or {}).get("phantom", [])) | recent_phantoms(site) if d in cur["dates"]]
+                    comparable = prev and "dates" in prev and "cts" in prev   # 旧方式（ブラウザ）のデータとは比較しない
+                    if comparable:
+                        for e in diff(prev, cur, now):
+                            ev_rows.append([e[0], site, kind] + e[1:])
+                        prev_first = bookable_first(prev)
+                        pc = prev.get("counts", {})
+                        for d in cur["dates"]:
+                            if not prev_first or d >= prev_first:
+                                break
+                            opened = d not in prev["dates"]
+                            grew = d in prev.get("phantom", []) and sum(cur["counts"].get(d, {}).values()) > sum(pc.get(d, {}).values())
+                            if not (opened or grew):
+                                continue
+                            # 最短日より手前に空き → 最新の残り人数で本当に取れるか確かめる
+                            live = live_counts(site, kind, d)
+                            start_track(site, kind, d, prev_first, live)
+                            if live is not None and sum(live.values()) == 0:
+                                if d not in cur["phantom"]:
+                                    cur["phantom"].append(d)
+                                continue
+                            cancels.append((site, kind, d, live if live is not None else cur["counts"].get(d),
+                                            f"最短日（{fmt_d(prev_first)}）より手前に空き", prev_first, live is not None))
+                    first = bookable_first(cur) or ""
                     fc = cur["counts"].get(first, {})
                     scan_rows.append([now, site, kind, "ok", first, len(cur["dates"]),
                                       fc.get("午前", ""), fc.get("午後", ""), cur.get("cache_age", "")])
-                    prev = prev_all.get(key)
-                    if prev and "dates" in prev and "cts" in prev:   # 旧方式（ブラウザ）のデータとは比較しない
-                        last_prev = max(prev["dates"]) if prev["dates"] else ""
-                        for e in diff(prev, cur, now):
-                            ev_rows.append([e[0], site, kind] + e[1:])
-                            _, typ, d, slot, old, new, _ = e
-                            # キャンセル＝残り人数の増加、または満席だった日に空き（90日先の新規公開日は除く）
-                            # 通知するのは「直前の最短日より手前」に空きが出たときだけ（それ以外は記録のみ）
-                            prev_first = prev["dates"][0] if prev["dates"] else None
-                            if typ in ("date_open", "count_up") and prev_first and d < prev_first \
-                                    and not any(c[0] == site and c[2] == d for c in cancels):
-                                cancels.append((site, kind, d, cur["counts"].get(d),
-                                                f"最短日（{fmt_d(prev_first)}）より手前に空き"))
                     cur_all[key] = cur
                 except Exception as e:
                     scan_rows.append([now, site, kind, "error", "", "", "", "", round(time.time() - t0, 1)])
@@ -400,20 +484,11 @@ def run(targets=None):
 
 
 def notify_cancels(cancels, base):
+    """手前に出た、最新確認で取れる枠だけを通知する（run() で確認済み）"""
     cancels.sort(key=lambda c: (c[0] != FAV, c[2]))          # 江東を先頭、次に早い日
     lines, ok_cancels = [], []
-    for site, kind, d, counts, what in cancels[:8]:
-        live = live_counts(site, kind, d)
-        det_id = f"{datetime.now():%m%d%H%M%S}_{site}_{d}"
-        log_live(det_id, site, kind, d, 0, live)
-        t0 = time.time()
-        for off in LIVE_FOLLOWUPS:
-            _PENDING.append((t0 + off, det_id, site, kind, d, off))
-        if live is not None:
-            if sum(live.values()) == 0:
-                continue      # カレンダーに一瞬写っただけで予約できない枠 → 通知しない（live.csv には記録済み）
-            counts = live
-            what += "（最新確認済）"
+    for site, kind, d, counts, what, prev_first, confirmed in cancels[:8]:
+        what += "（最新確認済）" if confirmed else "（最新は確認できず）"
         b = base.get(f"{site}_{kind}")
         early = " 🔥**記録開始時より早い**" if b and d < b else ""
         tag = "⭐ **【江東】**" if site == FAV else f"**{JP[site]}**"
@@ -422,14 +497,14 @@ def notify_cancels(cancels, base):
     if not lines:
         return
     if MODE != "hunt":
-        discord("🟡 **キャンセルを検知しました**（調査期間中・予約はまだできません）\n" + "\n".join(lines))
+        discord("🟢 **予約できる手前の枠が出ました**（調査期間中・予約はまだできません）\n" + "\n".join(lines))
         return
     # 本番：即時通知＋予約リンクと入力情報（今の予約日 MY_DATE より早いものがあればそれを案内）
     target = [c for c in ok_cancels if not MY_DATE or c[2] < MY_DATE]
     discord(("@here " if target else "") + "🚨 **キャンセル枠が出ました！**\n" + "\n".join(lines)
             + ("" if target else f"\n（今の予約日 {fmt_d(MY_DATE)} より早い枠ではないため、予約案内は省略）"))
     if target:
-        site, kind, d, counts, _ = target[0]
+        site, kind, d, counts, _ = target[0][:5]
         for m in booking_messages(site, kind, d, counts):
             discord(m)
 
@@ -478,124 +553,85 @@ def _slot(c):
     return f"午前{c.get('午前', '?')} / 午後{c.get('午後', '?')}"
 
 
-def summary(hours=None):
+def _early_rows():
+    return _rows(EARLY_LOG)
+
+
+def _early_stats(rows):
+    n = len(rows)
+    book = [r for r in rows if r["bookable"] == "1"]
+    phantom = [r for r in rows if r["bookable"] == "0"]
+    unknown = [r for r in rows if r["bookable"] == ""]
+    by_site = Counter(r["site"] for r in rows)
+    return n, book, phantom, unknown, by_site
+
+
+def summary(hours=12):
     latest = json.loads(LATEST.read_text(encoding="utf-8")) if LATEST.exists() else {}
-    scans, events = _rows(SCANS), _rows(EVENTS)
-    base = baseline()
-    since = datetime.now() - timedelta(hours=hours) if hours else None
-    if since:
-        events = [e for e in events if datetime.fromisoformat(e["time"]) >= since]
-    L = [f"📋 **本免 学科試験 空き状況**（{datetime.now():%m/%d %H:%M}）", ""]
+    scans = _rows(SCANS)
+    start = datetime.fromisoformat(scans[0]["time"]) if scans else datetime.now()
+    span_h = max(1.0, (datetime.now() - start).total_seconds() / 3600)
+    rows = _early_rows()
+    since = datetime.now() - timedelta(hours=hours)
+    recent = [r for r in rows if datetime.fromisoformat(r["detect_time"]) >= since]
 
-    # --- 第一希望：江東 ---
-    active = {f"{a}_{b}" for a, b in FAST + SLOW}
-    events = [e for e in events if f"{e['site']}_{e['kind']}" in active
-              and not (e["event"].startswith("date_") and e["time"] < DATE_EVENTS_VALID_FROM)]
-    L.append(f"⭐ **{JP[FAV]}試験場（第一希望）**")
-    for kind in ["only"]:
-        k = f"{FAV}_{kind}"; s = latest.get(k, {})
-        if not s.get("dates"):
-            L.append(f"> {JP[kind]}：{'空きなし' if 'dates' in s else '取得失敗'}")
-            continue
-        f = s["dates"][0]; c = s.get("counts", {}).get(f, {})
-        b = base.get(k)
-        if b and f < b:
-            gain = (date.fromisoformat(b) - date.fromisoformat(f)).days
-            L.append(f"> 🔥 {JP[kind]}：**{fmt_d(f)}**　{_slot(c)}　← **記録開始時（{fmt_d(b)}）より{gain}日早い！**")
-        else:
-            L.append(f"> {JP[kind]}：**{fmt_d(f)}**　{_slot(c)}")
-        nxt = [f"{fmt_d(d)} {c2.get('午前', '?')}/{c2.get('午後', '?')}" for d, c2 in list(s.get("counts", {}).items())[1:]]
-        if nxt:
-            L.append(f">  　次点：" + "、".join(nxt))
+    L = [f"📋 **本免 学科試験 調査レポート**（{datetime.now():%m/%d %H:%M}）",
+         "🎯 調査目標：**予約できる「手前」のキャンセルがどれくらい出るか**", ""]
+
+    def block(title, rs, hours_span):
+        n, book, phantom, unknown, by_site = _early_stats(rs)
+        per_day = n / hours_span * 24
+        L.append(f"**{title}**")
+        L.append(f"・手前の枠の出現：**{n}回**（" + "・".join(f"{JP[s_]}{by_site[s_]}" for s_ in ORDER) + f"）≒ 1日あたり{per_day:.1f}回")
+        L.append(f"・うち **予約できた（最新で1名以上）：{len(book)}回**")
+        L.append(f"・カレンダーに一瞬写っただけ（最新では0名）：{len(phantom)}回")
+        if unknown:
+            L.append(f"・確認できていない（詳細記録の開始前）：{len(unknown)}回")
+        secs = [int(r["bookable_sec"]) for r in book if r["bookable_sec"] not in ("", None)]
+        if secs:
+            ss = sorted(secs)
+            L.append(f"・予約できた枠が空いていた時間：中央値 約{ss[len(ss) // 2]}秒（最短 約{ss[0]}秒・最長 約{ss[-1]}秒）"
+                     + ("　※10分以上空いていた枠あり" if any(r["end"] == "timeout" for r in book) else ""))
+        days = [int(r["days_earlier"]) for r in book if r["days_earlier"]]
+        if days:
+            L.append(f"・最短日より何日手前だったか：平均{sum(days) / len(days):.0f}日（最大{max(days)}日）")
+
+    block(f"直近{hours}時間", recent, min(hours, span_h))
     L.append("")
+    block(f"記録開始から（{start:%m/%d %H:%M}〜、約{span_h:.0f}時間）", rows, span_h)
 
-    # --- その他の試験場 ---
-    L.append(f"**その他の試験場**（{SLOW_MIN}分ごと・最短日　午前/午後の残り）")
-    for site in ORDER[1:]:
-        cells = []
-        for kind in ["only"]:
-            k = f"{site}_{kind}"; s = latest.get(k, {})
-            if s.get("dates"):
-                f = s["dates"][0]; c = s.get("counts", {}).get(f, {})
-                mark = "🔥" if base.get(k) and f < base[k] else ""
-                txt = f"{mark}{fmt_d(f)} {c.get('午前', '?')}/{c.get('午後', '?')}"
-                cells.append(f"{JP[kind]} **{txt}**" if mark else f"{JP[kind]} {txt}")
-            else:
-                cells.append(f"{JP[kind]} {'空きなし' if 'dates' in s else '取得失敗'}")
-        L.append(f"・{JP[site]}　" + "　｜　".join(cells))
-
-    # --- 早い日程（キャンセル等で出た枠） ---
-    opens = [e for e in events if e["event"] == "date_open"]
-    early = [e for e in opens if base.get(f"{e['site']}_{e['kind']}") and e["date"] < base[f"{e['site']}_{e['kind']}"]]
-    early.sort(key=lambda e: (e["site"] != FAV, e["time"]))
-    span = f"直近{hours}時間" if hours else "記録開始から"
-    L.append("")
-    if early:
-        L.append(f"🔥 **{span}、記録開始時より早い日程が出た回数：{len(early)}回**")
-        for e in early[:10]:
-            star = "⭐" if e["site"] == FAV else "　"
-            L.append(f"{star}{e['time'][5:]}　{JP[e['site']]}・{JP[e['kind']]} → **{fmt_d(e['date'])}**")
-    else:
-        L.append(f"{span}、記録開始時より早い日程はまだ出ていません")
-
-    # --- 選べるけど0名の日 ---
-    zon = [e for e in events if e["event"] == "zero_on"]
-    zoff = [e for e in events if e["event"] == "zero_off"]
-    if zon or zoff:
-        opened_at = {}; lives = []
-        for e in sorted(zon + zoff, key=lambda e: e["time"]):
-            k = (e["site"], e["kind"], e["date"])
-            if e["event"] == "zero_on":
-                opened_at[k] = datetime.fromisoformat(e["time"])
-            elif k in opened_at:
-                lives.append((datetime.fromisoformat(e["time"]) - opened_at.pop(k)).total_seconds() / 60)
-        out = Counter(e["note"] for e in zoff)
+    book_all = [r for r in rows if r["bookable"] == "1"]
+    if book_all:
         L.append("")
-        L.append(f"🔎 選べるけど残り0名の日：出現 {len(zon)}回 → 消えた {out['to_closed']}回／1名以上に戻った {out['to_open']}回")
-        if lives:
-            ls = sorted(lives)
-            L.append(f"　続いた時間：中央値 約{ls[len(ls) // 2]:.0f}分（最短 約{ls[0]:.0f}分・最長 約{ls[-1]:.0f}分、{len(ls)}件）")
+        L.append("**予約できた手前の枠（新しい順）**")
+        for r in sorted(book_all, key=lambda r: r["detect_time"], reverse=True)[:10]:
+            star = "⭐" if r["site"] == FAV else "・"
+            dur = f"{r['bookable_sec']}秒以上" if r["end"] == "timeout" else (f"約{r['bookable_sec']}秒" if r["bookable_sec"] else "?")
+            L.append(f"{star}{r['detect_time'][5:16]}　{JP[r['site']]} **{fmt_d(r['date'])}**（{r['days_earlier']}日手前）"
+                     f"　{r['seats_at_detect']}名分・空いていた時間 {dur}")
 
-    # --- 検知した枠は実際に取れたか ---
-    live = _rows(LIVE_LOG)
-    if since:
-        live = [r for r in live if datetime.fromisoformat(r["time"]) >= since]
-    dets = defaultdict(dict)
-    for r in live:
-        if r["total"] != "":
-            dets[r["detect_id"]][int(r["offset_sec"])] = int(r["total"])
-    if dets:
-        at0 = [v.get(0) for v in dets.values() if 0 in v]
-        ok0 = sum(1 for x in at0 if x > 0)
-        L.append("")
-        L.append(f"🎯 **検知した枠が取れる状態だった割合：{ok0}/{len(at0)}件**（検知直後に最新で残り1名以上）")
-        for off in LIVE_FOLLOWUPS:
-            xs = [v[off] for v in dets.values() if v.get(0, 0) > 0 and off in v]
-            if xs:
-                L.append(f"　{off}秒後もまだ空いていた：{sum(1 for x in xs if x > 0)}/{len(xs)}件")
-
-    # --- 統計 ---
-    ups = [e for e in events if e["event"] == "count_up"]
-    cancels = sum(int(e["new"]) - int(e["old"]) for e in ups)
-    n_scan = len({r["time"] for r in scans}); ok = sum(r["result"] == "ok" for r in scans)
-    L.append("")
-    L.append(f"📊 キャンセルの動き：満席の日が空いた {len(opens)}回　／　残り人数が増えた {len(ups)}回（計{cancels}名分）")
-    cev = [e for e in opens + ups if e["time"] >= DATE_EVENTS_VALID_FROM]
-    hrs = Counter(datetime.fromisoformat(e["time"]).hour for e in cev)
+    hrs = Counter(datetime.fromisoformat(r["detect_time"]).hour for r in rows)
     if hrs:
-        L.append("　時間帯別：" + "  ".join(f"{h}時:{n}" for h, n in sorted(hrs.items())))
-        wd = Counter(W[datetime.fromisoformat(e["time"]).weekday()] for e in cev)
-        L.append("　曜日別：" + "  ".join(f"{w_}:{wd[w_]}" for w_ in W if wd[w_]))
-        top = [f"{h}時" for h, _ in hrs.most_common(3)]
-        L.append("　キャンセルが多い時間帯（上位）：" + "、".join(top))
-    ph = sorted(peak_hours())
-    L.append(f"⏱ 江東の確認：{FAST_SEC}秒ごと（{','.join(str(h) for h in ph)}時台は{PEAK_SEC}秒ごと）＋データ更新の直後")
-    ttls = CacheClock().summary(FAV)
-    if any(ttls.values()):
-        L.append("　予約サイトのデータ更新周期（推定）：" + "  ".join(f"{m[4:]}月 約{t / 60:.1f}分" for m, t in sorted(ttls.items()) if t))
-    L.append(f"　スキャン {n_scan}回（成功 {ok}/{len(scans)}）・記録開始 {scans[0]['time'][5:] if scans else '-'}")
-    L.append("🎯 本番モード：キャンセルはその場で通知、このレポートは8時・20時" if MODE == "hunt"
-             else "🔍 調査モード（10/2まで）：キャンセルはその場で通知、このレポートは8時・20時")
+        L.append("")
+        L.append("手前の枠が出た時間帯：" + "  ".join(f"{h}時:{n}" for h, n in sorted(hrs.items()))
+                 + ("（予約できた枠：" + "  ".join(f"{h}時:{n}" for h, n in sorted(Counter(datetime.fromisoformat(r['detect_time']).hour for r in book_all).items())) + "）" if book_all else ""))
+
+    # 今の最短日
+    L.append("")
+    L.append("**今の最短日**（免許証のみ・午前/午後の残り）")
+    for site in ORDER:
+        s_ = latest.get(f"{site}_only", {})
+        if bookable_first(s_):
+            f = bookable_first(s_); c = s_.get("counts", {}).get(f, {})
+            L.append(f"{'⭐' if site == FAV else '・'}{JP[site]}　**{fmt_d(f)}**　{c.get('午前', '?')}/{c.get('午後', '?')}")
+        else:
+            L.append(f"・{JP[site]}　{'10〜11月は空きなし' if 'dates' in s_ else '取得失敗'}")
+
+    L.append("")
+    L.append(f"⏱ 確認のしかた：3試験場とも、カレンダーのデータが作り直される予定（5分ごと）の約3秒後と、"
+             f"一定間隔（江東{PEAK_SEC}〜{FAST_SEC}秒・他{OTHER_SEC}秒）の両方で確認")
+    L.append("🎯 本番モード：取れる手前の枠はその場で通知" if MODE == "hunt"
+             else "🔍 調査モード（10/2まで）：取れる手前の枠だけその場で通知、このレポートは8時・20時")
     return "\n".join(L)
 
 
@@ -690,26 +726,27 @@ def dispatch_next():
     print("次のループを起動:", "OK" if r.returncode == 0 else "失敗")
 
 
+CACHE_TTL = 300          # 予約サイトのカレンダーデータは5分で作り直される（観測値）
+OTHER_SEC = 60           # 府中・鮫洲の通常の確認間隔
+
+
 def loop(hours=5.6):
-    """江東は30〜60秒ごと＋データ更新の直後、府中・鮫洲は15分ごと。終了2分前に次のループを起動"""
+    """各試験場を「前回のデータ作成時刻＋5分＋3秒」と「一定間隔（江東30〜60秒、他60秒）」の早い方で確認。
+    データの作り直しのタイミングがずれることがあるため、一定間隔の確認も併用する。終了2分前に次のループを起動"""
     _code_changed()
     clock = CacheClock()
     end = time.time() + hours * 3600
     now = time.time()
-    next_fast, next_slow, next_commit = now, now, now + COMMIT_MIN * 60
+    next_due = {t: now for t in FAST + SLOW}
+    next_commit = now + COMMIT_MIN * 60
     dispatched, n = False, 0
     while True:
         now = time.time()
-        if now >= end - 30:
+        if now >= end - 30 and not (_TRACK and now < end + 10 * 60):   # 追跡中なら最長10分延長
             break
         if not dispatched and now >= end - 120:
             dispatch_next(); dispatched = True
-        targets = []
-        if now >= next_fast:
-            targets += FAST
-        if now >= next_slow:
-            targets += SLOW
-            next_slow = now + SLOW_MIN * 60
+        targets = [t for t, due in next_due.items() if due <= now]
         if targets:
             try:
                 res = run(targets)
@@ -718,41 +755,31 @@ def loop(hours=5.6):
                 res = {}
                 print("run失敗:", e)
                 _notify_error_once(f"スキャン処理でエラー: {e.__class__.__name__}")
-            if any(t in FAST for t in targets):
-                t_now = time.time()
-                interval = PEAK_SEC if datetime.now().hour in peak_hours() else FAST_SEC
-                cands = []   # (次に確認する時刻, site, kind, month)
-                for site, kind in FAST:
-                    cur = res.get(f"{site}_{kind}") or {}
-                    clock.observe(site, cur.get("cts", {}))
-                    for m, ct in cur.get("cts", {}).items():
-                        t = clock.ttl(site, m)
-                        exp = clock.next_refresh(site, m)
-                        if t and exp and t_now - ct <= t + 30:
-                            while exp < t_now + MIN_GAP_SEC:
-                                exp += t      # 過ぎた更新予定は次の周期へ
-                            # 周期がわかっている月は「更新の直後」に確認（長くても10分おき）
-                            cands.append((min(exp, t_now + max(interval, 600)), site, kind, m))
-                        else:
-                            # 周期が未推定、または予測どおりに更新されていない月は通常間隔
-                            cands.append((t_now + interval, site, kind, m))
-                if cands:
-                    next_fast = min(c[0] for c in cands)
-                    for site, kind in FAST:
-                        _DUE[(site, kind)] = {m for c_t, s_, k_, m in cands if (s_, k_) == (site, kind) and c_t <= next_fast + 2}
-                else:
-                    next_fast = t_now + interval
+            t_now = time.time()
+            for site, kind in targets:
+                interval = (PEAK_SEC if datetime.now().hour in peak_hours() else FAST_SEC) if site == FAV else OTHER_SEC
+                nxt = t_now + interval
+                cts = (res.get(f"{site}_{kind}") or {}).get("cts", {})
+                clock.observe(site, cts)
+                for ct in cts.values():
+                    exp = ct + CACHE_TTL + EXPIRY_MARGIN_SEC
+                    while exp < t_now + MIN_GAP_SEC:
+                        exp += CACHE_TTL
+                    nxt = min(nxt, exp)       # データの作り直し予定の直後に前倒し
+                next_due[(site, kind)] = nxt
         next_pending = run_pending()
         if now >= next_commit:
             commit_push()
             next_commit = now + COMMIT_MIN * 60
-            if _code_changed():
+            if _code_changed() and not _TRACK:     # 追跡中は再起動を先送り
                 left = (end - time.time()) / 3600
                 print("watch.py が更新されたので再起動")
-                os.execv(sys.executable, [sys.executable, __file__, "loop", f"{left:.4f}"] + (["dispatched"] if dispatched else []))
-        wake = min(next_fast, next_slow, next_commit, end - 30, (end - 120) if not dispatched else end,
+                os.execv(sys.executable, [sys.executable, __file__, "loop", f"{left:.4f}"])
+        wake = min(min(next_due.values()), next_commit, max(end - 30, now + 1), (end - 120) if not dispatched else end,
                    next_pending or float("inf"))
         time.sleep(max(1.0, wake - time.time()))
+    for det_id in list(_TRACK):
+        _finish(det_id, "interrupted")
     commit_push()
     print(f"loop終了: {n}回")
 
