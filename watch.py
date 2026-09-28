@@ -590,7 +590,8 @@ def summary(hours=12):
         secs = [int(r["bookable_sec"]) for r in book if r["bookable_sec"] not in ("", None)]
         if secs:
             ss = sorted(secs)
-            L.append(f"・予約できた枠が空いていた時間：中央値 約{ss[len(ss) // 2]}秒（最短 約{ss[0]}秒・最長 約{ss[-1]}秒）"
+            fmt = lambda x: "10秒未満" if x < TRACK_STEP_SEC else f"約{x}秒"
+            L.append(f"・予約できた枠が空いていた時間：中央値 {fmt(ss[len(ss) // 2])}（最短 {fmt(ss[0])}・最長 {fmt(ss[-1])}）"
                      + ("　※10分以上空いていた枠あり" if any(r["end"] == "timeout" for r in book) else ""))
         days = [int(r["days_earlier"]) for r in book if r["days_earlier"]]
         if days:
@@ -606,7 +607,8 @@ def summary(hours=12):
         L.append("**予約できた手前の枠（新しい順）**")
         for r in sorted(book_all, key=lambda r: r["detect_time"], reverse=True)[:10]:
             star = "⭐" if r["site"] == FAV else "・"
-            dur = f"{r['bookable_sec']}秒以上" if r["end"] == "timeout" else (f"約{r['bookable_sec']}秒" if r["bookable_sec"] else "?")
+            dur = f"{r['bookable_sec']}秒以上" if r["end"] == "timeout" else (
+                ("10秒未満" if int(r["bookable_sec"]) < TRACK_STEP_SEC else f"約{r['bookable_sec']}秒") if r["bookable_sec"] else "?")
             L.append(f"{star}{r['detect_time'][5:16]}　{JP[r['site']]} **{fmt_d(r['date'])}**（{r['days_earlier']}日手前）"
                      f"　{r['seats_at_detect']}名分・空いていた時間 {dur}")
 
