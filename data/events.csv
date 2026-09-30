@@ -1980,3 +1980,7 @@ time,site,kind,event,date,slot,old,new,note
 2026-09-30 21:23,koto,only,count_down,2026-11-12,午前,12,10,
 2026-09-30 21:25,samezu,only,count_up,2026-11-16,午後,27,28,
 2026-09-30 21:25,samezu,only,count_down,2026-11-17,午前,47,46,
+2026-09-30 21:28,koto,only,count_down,2026-11-12,午前,10,9,
+2026-09-30 21:34,fuchu,only,count_down,2026-11-17,午後,12,11,
+2026-09-30 21:38,samezu,only,count_down,2026-11-13,午前,3,2,
+2026-09-30 21:40,samezu,only,date_open,2026-10-08,,,,earlier
