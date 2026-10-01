@@ -2498,3 +2498,11 @@ time,site,kind,event,date,slot,old,new,note
 2026-10-01 19:41,fuchu,only,count_down,2026-11-17,午前,20,19,
 2026-10-01 19:54,fuchu,only,count_down,2026-11-17,午前,19,18,
 2026-10-01 19:56,koto,only,date_open,2026-10-15,,,,earlier
+2026-10-01 19:59,koto,only,count_down,2026-11-18,午後,66,65,
+2026-10-01 20:00,fuchu,only,count_down,2026-11-19,午前,66,65,
+2026-10-01 20:01,koto,only,date_open,2026-10-02,,,,earlier
+2026-10-01 20:01,koto,only,date_close,2026-10-15,,,,
+2026-10-01 20:06,koto,only,date_open,2026-10-23,,,,
+2026-10-01 20:06,koto,only,date_close,2026-10-02,,,,
+2026-10-01 20:09,koto,only,count_down,2026-11-16,午後,3,2,
+2026-10-01 20:11,koto,only,date_close,2026-10-23,,,,
