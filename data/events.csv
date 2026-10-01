@@ -2119,3 +2119,8 @@ time,site,kind,event,date,slot,old,new,note
 2026-10-01 08:58,samezu,only,count_down,2026-11-16,午前,35,34,
 2026-10-01 08:58,samezu,only,count_down,2026-11-16,午後,21,20,
 2026-10-01 09:04,fuchu,only,count_down,2026-11-17,午後,5,4,
+2026-10-01 09:10,koto,only,count_down,2026-11-13,午前,42,41,
+2026-10-01 09:15,koto,only,count_down,2026-11-13,午前,41,40,
+2026-10-01 09:19,fuchu,only,date_open,2026-11-11,,,,earlier
+2026-10-01 09:19,fuchu,only,count_down,2026-11-20,午後,49,48,
+2026-10-01 09:20,koto,only,count_down,2026-11-16,午前,88,87,
