@@ -2418,3 +2418,8 @@ time,site,kind,event,date,slot,old,new,note
 2026-10-01 16:36,koto,only,date_open,2026-11-04,,,,earlier
 2026-10-01 16:36,koto,only,date_close,2026-11-12,,,,
 2026-10-01 16:36,koto,only,count_down,2026-11-16,午後,11,10,
+2026-10-01 16:42,koto,only,date_close,2026-11-04,,,,
+2026-10-01 16:47,koto,only,date_open,2026-10-02,,,,earlier
+2026-10-01 16:50,samezu,only,count_down,2026-11-16,午後,7,5,
+2026-10-01 16:51,koto,only,count_down,2026-11-16,午前,79,78,
+2026-10-01 16:52,koto,only,date_close,2026-10-02,,,,
