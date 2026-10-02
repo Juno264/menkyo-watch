@@ -2,8 +2,6 @@ name: menkyo-loop
 # 1回のジョブで約5時間半、監視を続ける。終了の少し前に次のジョブを起動して、すき間なく引き継ぐ
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "7 */2 * * *"          # 保険：ループが止まっていたら再開（動いていれば即終了）
   push:
     paths: ["run/loop.txt"]
 
@@ -41,12 +39,16 @@ jobs:
         if: steps.guard.outputs.skip != '1'
         with:
           ref: main
-      - uses: actions/setup-python@v5
+      - name: Stop flag
+        id: stop
         if: steps.guard.outputs.skip != '1'
+        run: if [ -e run/stop ]; then echo "stopped=1" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/setup-python@v5
+        if: steps.guard.outputs.skip != '1' && steps.stop.outputs.stopped != '1'
         with:
           python-version: "3.12"
       - name: Watch loop
-        if: steps.guard.outputs.skip != '1'
+        if: steps.guard.outputs.skip != '1' && steps.stop.outputs.stopped != '1'
         run: |
           git config user.name "menkyo-bot"
           git config user.email "menkyo-bot@users.noreply.github.com"

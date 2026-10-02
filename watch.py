@@ -722,7 +722,7 @@ def peak_hours():
 
 def dispatch_next():
     repo = os.environ.get("GITHUB_REPOSITORY")
-    if not repo:
+    if not repo or (BASE / "run" / "stop").exists():
         return
     r = subprocess.run(["gh", "workflow", "run", "loop.yml", "-R", repo, "--ref", "main"])
     print("次のループを起動:", "OK" if r.returncode == 0 else "失敗")
@@ -735,6 +735,8 @@ OTHER_SEC = 60           # 府中・鮫洲の通常の確認間隔
 def loop(hours=5.6):
     """各試験場を「前回のデータ作成時刻＋5分＋3秒」と「一定間隔（江東30〜60秒、他60秒）」の早い方で確認。
     データの作り直しのタイミングがずれることがあるため、一定間隔の確認も併用する。終了2分前に次のループを起動"""
+    if (BASE / "run" / "stop").exists():
+        print("run/stop があるので監視を開始しません"); return
     _code_changed()
     clock = CacheClock()
     end = time.time() + hours * 3600

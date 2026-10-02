@@ -53,6 +53,8 @@ jobs:
           CMD="${CMD#direct:}"
           echo "cmd: $CMD"
           case "$CMD" in
+            stop-loop)
+              for id in $(gh run list --workflow loop.yml --json databaseId,status -q '.[] | select(.status=="in_progress" or .status=="queued" or .status=="pending") | .databaseId'); do gh run cancel $id || true; done ;;
             restart-loop)
               for id in $(gh run list --workflow loop.yml --json databaseId,status -q '.[] | select(.status=="in_progress" or .status=="queued") | .databaseId'); do gh run cancel $id || true; done
               sleep 20; gh workflow run loop.yml --ref main ;;
